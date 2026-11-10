@@ -1,9 +1,10 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { ANALYSIS_SCHEMA, SYSTEM_PROMPT, validateAnalysis } from '../src/analysis-contract.js';
+import { SYSTEM_PROMPT, schemaForPostCount, parseModelAnalysis } from '../src/analysis-contract.js';
 
 const MAX_BODY = 24 * 1024 * 1024;
+const publicError = message => Object.assign(new Error(message), { publicMessage: message });
 export function validOrigin(origin) {
   return /^((chrome|moz)-extension:\/\/[a-zA-Z0-9-]+|http:\/\/(127\.0\.0\.1|localhost):5173)$/.test(origin || '');
 }
@@ -26,18 +27,26 @@ export function buildRequest(posts, model, maxTokens = 5000) {
     content.push({ type: 'text', text: JSON.stringify({ index: i + 1, caption: post.caption, captionSource: post.captionSource || 'unknown', collectionWarnings: post.warnings || [], photoCount: post.images.length, isVideo: !!post.isVideo }) });
     post.images.forEach(url => content.push({ type: 'image_url', image_url: { url, detail: 'low' } }));
   });
-  return { model, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content }], temperature: 0.2, max_tokens: maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'climate_profile', strict: true, schema: ANALYSIS_SCHEMA } }, provider: { require_parameters: true, data_collection: 'deny' } };
+  content.push({ type: 'text', text: `Return exactly ${posts.length} post findings. Required indices: ${posts.map((_, i) => i + 1).join(', ')}. Include notRelevant findings for unrelated posts; do not omit them.` });
+  return { model, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content }], temperature: 0.2, max_tokens: maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'climate_profile', strict: true, schema: schemaForPostCount(posts.length) } }, provider: { require_parameters: true, data_collection: 'deny' } };
 }
 export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash', fetchImpl = fetch } = {}) {
   let active = false; const jobs = new Map();
   async function runModel(posts) {
     const maxTokens = Math.min(12000, Math.max(1000, Number(process.env.OPENROUTER_MAX_TOKENS) || 5000));
     const upstream = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Evergreen Climate Research' }, body: JSON.stringify(buildRequest(posts, model, maxTokens)), signal: AbortSignal.timeout(180000) });
-    if (!upstream.ok) throw new Error({ 401: 'OpenRouter rejected the API key.', 402: 'Your OpenRouter account needs credits.', 429: 'OpenRouter is rate-limiting requests. Try again later.' }[upstream.status] || `OpenRouter returned ${upstream.status}. Check that ${model} accepts images, structured outputs, and your provider privacy settings.`);
-    const result = await upstream.json(); const raw = result.choices?.[0]?.message?.content;
-    if (typeof raw !== 'string') throw new Error('OpenRouter returned no readable analysis. Try another model.');
+    if (!upstream.ok) throw publicError({ 401: 'OpenRouter rejected the API key.', 402: 'Your OpenRouter account needs credits.', 429: 'OpenRouter is rate-limiting requests. Try again later.' }[upstream.status] || `OpenRouter returned ${upstream.status}. Check that ${model} accepts images, structured outputs, and your provider privacy settings.`);
+    const result = await upstream.json(); const choice = result.choices?.[0]; const raw = choice?.message?.content;
+    if (choice?.finish_reason === 'length' || choice?.native_finish_reason === 'MAX_TOKENS') throw publicError('The model hit its output-token limit before finishing. Increase OPENROUTER_MAX_TOKENS in .env or choose a model with less reasoning overhead, then restart the backend.');
+    if (choice?.finish_reason === 'content_filter' || choice?.message?.refusal) throw publicError('The model declined to analyze this content. Try another profile or model.');
+    if (typeof raw !== 'string') throw publicError('OpenRouter returned no readable analysis. Try another model.');
     let analysis;
-    try { analysis = validateAnalysis(JSON.parse(raw), posts.length); } catch (e) { throw new Error(e.message.startsWith('The model') ? e.message : 'The model returned invalid JSON. Try an image-capable model with structured output support.'); }
+    try { analysis = parseModelAnalysis(raw, posts.length); }
+    catch (e) {
+      // Record format metadata only. Never log images, captions, model prose, or API keys.
+      console.warn('[Evergreen] Analysis output rejected', { model, expectedPosts: posts.length, finishReason: choice?.finish_reason, completionTokens: result.usage?.completion_tokens, reason: e.message });
+      throw publicError(e.message);
+    }
     return { analysis, model, usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: result.usage.completion_tokens, cost: result.usage.cost } : null };
   }
   return http.createServer(async (req, res) => {
@@ -51,7 +60,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Evergreen-Client');
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
-    if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: 10 });
+    if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: 10, analysisFormatVersion: 2 });
     for (const [id, job] of jobs) if (Date.now() - job.createdAt > 600000) jobs.delete(id);
     if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url)) {
       const job = jobs.get(req.url.split('/')[2]);
@@ -75,7 +84,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
         return send(202, { id });
       }
       send(200, await runModel(posts));
-    } catch (e) { if (!res.headersSent) send(502, { error: e.name === 'TimeoutError' ? 'OpenRouter timed out. Try again or choose a faster model.' : 'Could not reach OpenRouter. Check your connection and model configuration.' }); }
+    } catch (e) { if (!res.headersSent) send(502, { error: e.publicMessage || (e.name === 'TimeoutError' ? 'OpenRouter timed out. Try again or choose a faster model.' : 'Could not reach OpenRouter. Check your connection and model configuration.') }); }
     finally { if (ownsSlot) active = false; }
   });
 }

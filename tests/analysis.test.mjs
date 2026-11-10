@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnalysis } from '../src/analysis-contract.js';
+import { parseModelAnalysis, schemaForPostCount, validateAnalysis } from '../src/analysis-contract.js';
 import { buildRequest, createServer, validateInput, validOrigin } from '../server/index.mjs';
 
 export function sampleAnalysis(count = 1) {
@@ -22,6 +22,41 @@ test('only bounded inline images reach OpenRouter, with captions paired by post'
   assert.equal(request.model, 'provider/model'); assert.equal(request.messages[1].content[2].image_url.detail, 'low');
   assert.ok(request.messages[1].content[1].text.includes('A vegan lunch.'));
   assert.equal(request.provider.data_collection, 'deny');
+  assert.equal(request.response_format.json_schema.schema.properties.posts.minItems, 1);
+  assert.equal(schemaForPostCount(10).properties.posts.minItems, 10);
+  assert.equal(schemaForPostCount(10).properties.posts.maxItems, 10);
+  assert.equal(schemaForPostCount(2).properties.posts.items.properties.index.maximum, 2);
+  assert.throws(() => schemaForPostCount(0));
+});
+
+test('partial model results expose missing indices without manufacturing category signals', () => {
+  const partial = sampleAnalysis(2); partial.posts[1].index = 3;
+  const result = parseModelAnalysis(JSON.stringify(partial), 4);
+  assert.deepEqual(result.coverage.missingIndices, [2, 4]);
+  assert.equal(result.coverage.analyzedPosts, 2);
+  assert.equal(result.categories.food.supportive, 2);
+  assert.deepEqual(result.posts.filter(p => p.signal === 'notAnalyzed').map(p => p.index), [2, 4]);
+  assert.match(result.summary, /Partial analysis/);
+  assert.ok(result.coverage.notes[0].includes('excluded from category counts'));
+});
+
+test('missing prose and category summaries fall back to project copy and derived counts', () => {
+  const response = sampleAnalysis(); delete response.summary; delete response.limitations; delete response.categories;
+  const result = parseModelAnalysis(JSON.stringify(response), 1);
+  assert.equal(result.categories.food.supportive, 1);
+  assert.equal(result.categories.transport.supportive, 0);
+  assert.match(result.summary, /1 of 1/);
+  assert.match(result.limitations, /not a verified footprint/);
+  assert.equal(result.coverage.notes.length, 3);
+});
+
+test('model formatting variations are accepted but empty or ambiguous evidence is rejected', () => {
+  assert.equal(parseModelAnalysis('```json\n' + JSON.stringify(sampleAnalysis()) + '\n```', 1).coverage.analyzedPosts, 1);
+  assert.equal(parseModelAnalysis(JSON.stringify({ analysis: sampleAnalysis() }), 1).coverage.analyzedPosts, 1);
+  assert.throws(() => parseModelAnalysis(JSON.stringify({ summary: 'Nothing', categories: {}, limitations: 'Limited', posts: [] }), 2), /0 of 2/);
+  const duplicate = sampleAnalysis(2); duplicate.posts[1].index = 1;
+  assert.throws(() => parseModelAnalysis(JSON.stringify(duplicate), 2), /invalid post findings/);
+  assert.throws(() => parseModelAnalysis('{"summary":', 2), /invalid JSON/);
 });
 test('local backend rejects arbitrary website origins and exposes no API key', async t => {
   const server = createServer({ apiKey: 'test-private-key', model: 'test/model', fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(sampleAnalysis()) } }], usage: { prompt_tokens: 100 } }), { status: 200 }) });
@@ -56,4 +91,12 @@ test('analysis jobs return immediately, retain one paid request, and expose resu
   const done = await fetch(`${url}/jobs/${id}`, { headers }); const result = await done.json();
   assert.equal(result.state, 'done'); assert.equal(result.result.analysis.categories.food.supportive, 1);
   assert.equal(calls, 1);
+});
+
+test('token-exhausted responses identify the output budget rather than blaming model compatibility', async t => {
+  let calls = 0;
+  const server = createServer({ apiKey: 'test-key', fetchImpl: async () => { calls++; return new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '{"summary":' } }] })); } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close());
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/analyze`, { method: 'POST', headers: { Origin: 'moz-extension://test-extension', 'Content-Type': 'application/json' }, body: JSON.stringify({ posts: [post] }) });
+  assert.equal(response.status, 502); assert.match((await response.json()).error, /output-token limit/); assert.equal(calls, 1);
 });
