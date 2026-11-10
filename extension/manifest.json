@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Evergreen · Climate journal",
+  "version": "0.1.0",
+  "description": "Notice climate actions on Instagram, review caption suggestions, and reflect on your own habits. Local and private.",
+  "permissions": ["storage"],
+  "action": { "default_popup": "popup.html", "default_title": "Open Evergreen" },
+  "background": { "service_worker": "background.js" },
+  "icons": { "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "content_scripts": [{ "matches": ["https://www.instagram.com/*", "https://instagram.com/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self'" }
+}
