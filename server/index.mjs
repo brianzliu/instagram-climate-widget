@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { ANALYSIS_SCHEMA, SYSTEM_PROMPT, validateAnalysis } from '../src/analysis-contract.js';
 
@@ -28,11 +29,21 @@ export function buildRequest(posts, model, maxTokens = 5000) {
   return { model, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content }], temperature: 0.2, max_tokens: maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'climate_profile', strict: true, schema: ANALYSIS_SCHEMA } }, provider: { require_parameters: true, data_collection: 'deny' } };
 }
 export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash', fetchImpl = fetch } = {}) {
-  let active = false;
+  let active = false; const jobs = new Map();
+  async function runModel(posts) {
+    const maxTokens = Math.min(12000, Math.max(1000, Number(process.env.OPENROUTER_MAX_TOKENS) || 5000));
+    const upstream = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Evergreen Climate Research' }, body: JSON.stringify(buildRequest(posts, model, maxTokens)), signal: AbortSignal.timeout(180000) });
+    if (!upstream.ok) throw new Error({ 401: 'OpenRouter rejected the API key.', 402: 'Your OpenRouter account needs credits.', 429: 'OpenRouter is rate-limiting requests. Try again later.' }[upstream.status] || `OpenRouter returned ${upstream.status}. Check that ${model} accepts images, structured outputs, and your provider privacy settings.`);
+    const result = await upstream.json(); const raw = result.choices?.[0]?.message?.content;
+    if (typeof raw !== 'string') throw new Error('OpenRouter returned no readable analysis. Try another model.');
+    let analysis;
+    try { analysis = validateAnalysis(JSON.parse(raw), posts.length); } catch (e) { throw new Error(e.message.startsWith('The model') ? e.message : 'The model returned invalid JSON. Try an image-capable model with structured output support.'); }
+    return { analysis, model, usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: result.usage.completion_tokens, cost: result.usage.cost } : null };
+  }
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
-    if (!['127.0.0.1:8787', 'localhost:8787'].includes(req.headers.host) && process.env.NODE_ENV !== 'test') return send(403, { error: 'Use the loopback backend address.' });
+    if (![ `127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}` ].includes(req.headers.host)) return send(403, { error: 'Use the loopback backend address.' });
     if (!validOrigin(origin) && !(!origin && req.headers['x-evergreen-client'] === 'extension' && req.headers['sec-fetch-site'] !== 'cross-site')) return send(403, { error: 'Only the Evergreen extension or local development app may use this backend.' });
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
@@ -41,7 +52,12 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: 10 });
-    if (req.method !== 'POST' || req.url !== '/analyze') return send(404, { error: 'Not found.' });
+    for (const [id, job] of jobs) if (Date.now() - job.createdAt > 600000) jobs.delete(id);
+    if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url)) {
+      const job = jobs.get(req.url.split('/')[2]);
+      return job ? send(200, { state: job.state, result: job.result, error: job.error }) : send(404, { error: 'This analysis expired. Please run it again.' });
+    }
+    if (req.method !== 'POST' || !['/analyze', '/jobs'].includes(req.url)) return send(404, { error: 'Not found.' });
     if (!req.headers['content-type']?.startsWith('application/json')) return send(415, { error: 'Use application/json.' });
     if (!apiKey) return send(503, { error: 'Add OPENROUTER_API_KEY to .env and restart npm run api.' });
     if (active) return send(429, { error: 'An analysis is already running. Wait for it to finish.' });
@@ -52,15 +68,13 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
       try { posts = validateInput(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { return send(400, { error: e.message }); }
       if (active) return send(429, { error: 'An analysis is already running.' });
       active = true; ownsSlot = true;
-      const maxTokens = Math.min(12000, Math.max(1000, Number(process.env.OPENROUTER_MAX_TOKENS) || 5000));
-      const upstream = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Evergreen Climate Research' }, body: JSON.stringify(buildRequest(posts, model, maxTokens)), signal: AbortSignal.timeout(180000) });
-      if (!upstream.ok) { const message = { 401: 'OpenRouter rejected the API key.', 402: 'Your OpenRouter account needs credits.', 429: 'OpenRouter is rate-limiting requests. Try again later.' }[upstream.status] || `OpenRouter returned ${upstream.status}. Check that ${model} accepts images, structured outputs, and your provider privacy settings.`; return send(502, { error: message }); }
-      const result = await upstream.json();
-      const raw = result.choices?.[0]?.message?.content;
-      if (typeof raw !== 'string') return send(502, { error: 'OpenRouter returned no readable analysis. Try another model.' });
-      let analysis;
-      try { analysis = validateAnalysis(JSON.parse(raw), posts.length); } catch (e) { return send(502, { error: e.message.startsWith('The model') ? e.message : 'The model returned invalid JSON. Try an image-capable model with structured output support.' }); }
-      send(200, { analysis, model, usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: result.usage.completion_tokens, cost: result.usage.cost } : null });
+      if (req.url === '/jobs') {
+        const id = randomUUID(); const job = { createdAt: Date.now(), state: 'pending' }; jobs.set(id, job); ownsSlot = false;
+        // Short polling requests avoid Chromium's service-worker fetch lifetime limits.
+        runModel(posts).then(result => { job.state = 'done'; job.result = result; }).catch(e => { job.state = 'error'; job.error = e.name === 'TimeoutError' ? 'OpenRouter timed out. Try a faster model.' : e.message; }).finally(() => { active = false; });
+        return send(202, { id });
+      }
+      send(200, await runModel(posts));
     } catch (e) { if (!res.headersSent) send(502, { error: e.name === 'TimeoutError' ? 'OpenRouter timed out. Try again or choose a faster model.' : 'Could not reach OpenRouter. Check your connection and model configuration.' }); }
     finally { if (ownsSlot) active = false; }
   });

@@ -61,7 +61,11 @@ async function handle(message, sender) {
   if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id);
   if (message.type === 'FETCH_IMAGE' && isInstagram(sender)) return fetchImage(message.url);
   if (message.type === 'CANCEL_CAPTURE') { const id = captures.get(sender.tab?.id); if (id) await api.tabs.remove(id).catch(() => {}); return { ok: true }; }
-  if (message.type === 'ANALYZE' && isInstagram(sender)) return request('/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posts: message.posts }) });
+  if (message.type === 'START_ANALYSIS' && isInstagram(sender)) return request('/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posts: message.posts }) });
+  if (message.type === 'ANALYSIS_STATUS' && isInstagram(sender)) {
+    if (!/^[a-f0-9-]{36}$/.test(message.id)) throw new Error('Invalid analysis identifier.');
+    return request(`/jobs/${message.id}`);
+  }
   if (message.type === 'SAVE_PROFILE' && isInstagram(sender)) {
     const profile = message.profile;
     if (!profile || !/^[\w.]{1,30}$/.test(profile.username) || !profile.analysis?.categories) throw new Error('Invalid analysis.');

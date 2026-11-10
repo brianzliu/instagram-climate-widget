@@ -24,6 +24,7 @@ export async function readPostPage() {
     for (const img of article.querySelectorAll('img')) {
       const rect = img.getBoundingClientRect();
       if (rect.width < 180 || rect.height < 140 || !img.src || img.alt?.toLowerCase().includes('profile picture')) continue;
+      if (img.closest('a[href^="/p/"], a[href^="/reel/"]')) continue;
       let url; try { url = new URL(img.currentSrc || img.src); } catch { continue; }
       if (!/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(url.hostname)) continue;
       const key = url.pathname;
@@ -37,7 +38,7 @@ export async function readPostPage() {
   capture();
   // Instagram carousels are limited to 20 slides. Walk the visible Next control.
   const nextButton = () => [...article.querySelectorAll('button, [role="button"]')].find(el => {
-    const label = `${el.getAttribute('aria-label') || ''} ${el.querySelector('svg')?.getAttribute('aria-label') || ''}`.trim();
+    const label = (el.getAttribute('aria-label') || el.querySelector('svg')?.getAttribute('aria-label') || '').trim();
     return /^(Next|Next slide|Siguiente|Suivant|Weiter|Avanti|Próximo|下一步|下一张|次へ)$/i.test(label) && !el.disabled && el.getBoundingClientRect().width > 0;
   });
   let next = nextButton();
@@ -57,9 +58,9 @@ export function profileFromDocument(doc, pathname) {
   const match = /^\/([\w.]+)\/?$/.exec(pathname);
   if (!match || ['accounts', 'direct', 'explore', 'reels', 'stories', 'p', 'reel', 'about', 'legal', 'privacy', 'developer', 'web'].includes(match[1])) return null;
   const main = doc.querySelector('main');
-  const header = main?.querySelector('header') || [...(main?.querySelectorAll('section') || [])].find(el => el.querySelector('h1, h2') && el.querySelector('img'));
-  if (!header) return null;
-  const photo = [...header.querySelectorAll('img')].find(img => /profile/i.test(img.alt || '')) || header.querySelector('img');
+  if (!main) return null;
+  const header = main.querySelector('header') || [...main.querySelectorAll('section')].find(el => el.querySelector('h1, h2') && el.querySelector('img'));
+  const photo = [...main.querySelectorAll('img')].find(img => /profile picture|foto del perfil|photo de profil|profilbild|foto do perfil|프로필|プロフィール|头像|大頭/i.test(img.alt || '')) || header?.querySelector('img');
   if (!photo) return null;
   return { username: match[1], header, photo };
 }
@@ -68,7 +69,7 @@ export function gridPosts(doc) {
   const seen = new Set(); const posts = [];
   // Preserve visual grid order. Pinned posts intentionally count toward the first 10.
   for (const link of doc.querySelectorAll('main a[href]')) {
-    const match = /^\/(p|reel)\/([A-Za-z0-9_-]+)\/?/.exec(link.getAttribute('href'));
+    const match = /^\/(?:[\w.]+\/)?(p|reel)\/([A-Za-z0-9_-]+)\/?/.exec(link.getAttribute('href'));
     if (!match || !link.querySelector('img') || seen.has(match[2])) continue;
     seen.add(match[2]);
     posts.push({ url: `https://www.instagram.com/${match[1]}/${match[2]}/`, preview: link.querySelector('img').currentSrc || link.querySelector('img').src });

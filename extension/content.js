@@ -41,11 +41,15 @@ async function analyze() {
     if (!health.configured) throw new Error('Add OPENROUTER_API_KEY to .env, then restart npm run api.');
     stillHere();
     // Loading more of the grid does not navigate away from the profile.
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    await new Promise(resolve => setTimeout(resolve, 350)); stillHere();
     let posts = gridPosts(document);
     for (let i = 0; posts.length < 10 && i < 4; i++) {
       showProgress(`Loading profile grid · ${posts.length} posts found…`, 0);
       window.scrollBy({ top: 700, behavior: 'instant' });
-      await new Promise(resolve => setTimeout(resolve, 1000)); stillHere(); posts = gridPosts(document);
+      await new Promise(resolve => setTimeout(resolve, 1000)); stillHere();
+      const seen = new Set(posts.map(p => p.url));
+      posts = [...posts, ...gridPosts(document).filter(p => !seen.has(p.url))].slice(0, 10);
     }
     if (!posts.length) throw new Error('No accessible posts found. This may be a private profile, an empty grid, or a changed Instagram layout.');
     const collected = []; let originalBytes = 0, compressedBytes = 0;
@@ -54,6 +58,10 @@ async function analyze() {
       let data;
       try { data = await message({ type: 'COLLECT_POST', url: posts[i].url }); }
       catch (e) { stillHere(); data = { caption: '', captionSource: 'missing', images: [], warnings: [e.message], isVideo: false }; }
+      if (!data.images.length && /^https:\/\//.test(posts[i].preview)) {
+        data.images.push({ url: posts[i].preview });
+        data.warnings.push('Using the grid cover because full post media was unavailable. Carousel coverage is incomplete.');
+      }
       stillHere(); const images = [];
       for (const [j, photo] of data.images.entries()) {
         stillHere(); showProgress(`Compressing post ${i + 1} · photo ${j + 1} of ${data.images.length}…`, i + .5, posts.length);
@@ -67,7 +75,16 @@ async function analyze() {
     showProgress(`Sending ${collected.reduce((n, p) => n + p.images.length, 0)} compressed photos to ${health.model}…`, posts.length, posts.length);
     // Cancellation is no longer offered after upload starts. The model request may incur a charge.
     shadow.getElementById('cancel')?.remove();
-    const response = await message({ type: 'ANALYZE', posts: collected });
+    const job = await message({ type: 'START_ANALYSIS', posts: collected });
+    let response;
+    for (let i = 0; i < 100; i++) {
+      if (currentUsername !== username || canceled) return;
+      const status = await message({ type: 'ANALYSIS_STATUS', id: job.id });
+      if (status.state === 'done') { response = status.result; break; }
+      if (status.state === 'error') throw new Error(status.error);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    if (!response) throw new Error('Analysis took too long. The OpenRouter request may still finish on the backend.');
     if (currentUsername !== username || canceled) return;
     const coverage = { postsRequested: 10, postsFound: posts.length, postsRead: collected.filter(p => p.images.length || p.caption).length, photos: collected.reduce((n, p) => n + p.images.length, 0), captions: collected.filter(p => p.caption).length, originalBytes, compressedBytes, warnings: collected.flatMap((p, i) => p.warnings.map(w => `Post ${i + 1}: ${w}`)) };
     result = { id: crypto.randomUUID(), username, analyzedAt: new Date().toISOString(), analysis: response.analysis, model: response.model, usage: response.usage, coverage, posts: collected.map(({ images, ...post }) => ({ ...post, photoCount: images.length })) };
@@ -103,7 +120,7 @@ function mount() {
   const next = profileFromDocument(document, location.pathname);
   if (!next) { if (host) { canceled = true; message({ type: 'CANCEL_CAPTURE' }).catch(() => {}); host.remove(); host = null; profile = null; currentUsername = null; result = null; } return; }
   profile = next;
-  if (host?.isConnected && currentUsername === next.username) return;
+  if (host?.isConnected && currentUsername === next.username) { positionWidget(); return; }
   if (host) { canceled = true; host.remove(); message({ type: 'CANCEL_CAPTURE' }).catch(() => {}); }
   currentUsername = next.username; result = null; collapsed = false;
   host = document.createElement('evergreen-profile-widget'); host.setAttribute('aria-label', 'Evergreen climate profile insights');

@@ -11,7 +11,7 @@ for (const target of ['chromium', 'firefox']) {
   const manifest = structuredClone(base);
   if (target === 'firefox') {
     manifest.background = { scripts: ['background.js'] };
-    manifest.browser_specific_settings = { gecko: { id: 'evergreen-climate@local.example', strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } } };
+    manifest.browser_specific_settings = { gecko: { id: 'evergreen-climate@local.example', strict_min_version: '140.0', data_collection_permissions: { required: ['websiteContent'] } } };
   }
   await writeFile(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
   await build({ entryPoints: ['extension/content.js', 'extension/background.js', 'extension/popup.js'], outdir, bundle: true, format: 'iife', loader: { '.css': 'text' }, target: ['chrome120', 'firefox140'], minify: true });
