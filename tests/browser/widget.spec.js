@@ -2,11 +2,13 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { readPostPage } from '../../extension/collector.js';
 import { compressImage } from '../../extension/compress.js';
+import { parseModelAnalysis } from '../../src/analysis-contract.js';
 const IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1sAAAAASUVORK5CYII=';
 function analysis() { return { summary: 'The sample includes a caption describing a plant-based lunch.', categories: Object.fromEntries(['transport','food','circular'].map(c => [c,{ supportive:c==='food'?10:0,higherImpact:0,uncertain:0,explanation:'Based on supplied posts.' }])), posts:Array.from({length:10},(_,i)=>({index:i+1,observation:'A plant-based meal is described.',category:'food',signal:'supportive',evidence:'Caption says vegan lunch.',confidence:'medium'})),limitations:'Curated posts are not a verified footprint.' }; }
 const profileHTML = `<html><head><title>Fictional Instagram profile</title></head><body style="margin:0;font-family:Arial;background:#fff"><aside style="position:fixed;top:0;left:0;width:200px;height:100vh;border-right:1px solid #ddd;padding:25px;font-size:25px">Instagram</aside><main style="margin-left:240px;max-width:850px;padding:40px"><header style="display:flex;gap:50px;min-height:210px"><img alt="sample profile picture" src="${IMAGE}" style="width:145px;height:145px;border-radius:50%;background:#e2e4db"/><div><h2>sample</h2><p>10 posts　 280 followers　 312 following</p><b>A fictional profile for testing</b></div></header><section style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">${Array.from({length:10},(_,i)=>`<a href="/p/post${i}/"><img alt="Vegan lunch" src="${IMAGE}" style="width:100%;height:200px;background:${i%2?'#d6ddc3':'#d9ccb3'}"/></a>`).join('')}</section></main></body></html>`;
 
 test('profile widget collects exactly 10 posts, compresses images, and renders evidence', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('https://www.instagram.com/**', route => route.fulfill({ contentType:'text/html',body:profileHTML }));
   await page.goto('https://www.instagram.com/sample/');
   await page.evaluate(({image, answer}) => {
@@ -34,9 +36,26 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   expect(await page.evaluate(()=>saved[0].posts.every(p=>!p.images))).toBe(true);
   await page.screenshot({path:'test-results/profile-widget.png',fullPage:true});
   await page.evaluate(()=>{history.pushState({},'', '/anotherprofile/'); document.querySelector('header h2').textContent='anotherprofile';});
-  await expect(widget.getByText("@anotherprofile's first 10 grid posts",{exact:false})).toBeVisible();
+  await expect(widget.getByRole('heading', { name: '@anotherprofile', exact: true })).toBeVisible();
   await page.evaluate(()=>{history.pushState({},'', '/explore/');document.querySelector('header h2').textContent='Explore';});
   await expect(widget).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('partial model findings stay visible with explicit coverage and unanalysed posts', async ({ page }) => {
+  const raw = analysis(); raw.posts = [raw.posts[0]];
+  const parsed = parseModelAnalysis(JSON.stringify(raw), 10);
+  const saved = { id:'partial', username:'sample', analyzedAt:new Date().toISOString(), analysis:parsed, model:'test/vision', coverage:{postsRead:10,postsRequested:10,photos:10,captions:10,compressedBytes:1000,originalBytes:10000,warnings:parsed.coverage.notes}, posts:Array.from({length:10},(_,i)=>({url:`https://www.instagram.com/p/post${i}/`,caption:`Caption ${i+1}`})) };
+  await page.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:profileHTML}));
+  await page.goto('https://www.instagram.com/sample/');
+  await page.evaluate(saved=>{window.chrome={runtime:{sendMessage:async()=>({ok:true})},storage:{local:{get:async()=>({'evergreen:personal:v1':{observations:[saved]}})}}};},saved);
+  await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
+  const widget=page.locator('evergreen-profile-widget');
+  await expect(widget.getByRole('status')).toContainText('Model findings: 1 of 10 posts');
+  await expect(widget.locator('.stat strong')).toHaveText(['0','1','0']);
+  await widget.getByRole('button',{name:'View evidence & collection notes'}).click();
+  await expect(widget.getByText('The model did not return a finding for this post.').first()).toBeVisible();
+  await expect(widget.getByText('Caption: Caption 2',{exact:true})).toBeVisible();
 });
 
 test('collector reads full caption and advances a carousel without reading comments', async ({ page }) => {

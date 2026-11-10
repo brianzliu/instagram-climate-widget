@@ -76,6 +76,10 @@ Open `http://127.0.0.1:5173`. The browser preview starts with fictional demo rec
 
 Transport, food, and reuse/repair are the three supported categories. Video posts use visible cover frames only. Playback and audio are not analyzed. A caption may describe multiple carousel photos, so the model receives the caption once alongside all collected slides from that post.
 
+The request schema requires exactly one finding for every supplied post. If a provider nevertheless omits findings, valid findings remain available as a clearly labelled partial analysis. Missing posts are marked unanalysed and excluded from category counts. Missing summary prose uses explicit project copy rather than invented model observations. Empty findings, duplicate indices, and invalid evidence still fail validation. Token-budget exhaustion has a separate error explaining the output limit. No automatic second paid request is made.
+
+If you see an old generic "incomplete analysis" message after an update, restart the backend, reload Evergreen in the browser extension manager, and refresh Instagram. Backend diagnostic logs include format metadata only, not captions, photos, model prose, or API keys.
+
 ## Data and privacy
 
 - Personal records live in `storage.local`. The development preview uses `localStorage`. Demo records use a separate key.

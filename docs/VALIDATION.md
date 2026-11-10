@@ -33,3 +33,9 @@ No live Instagram account was accessed, and no paid OpenRouter request was made.
 6. Save the result, revisit the profile, and verify the cached timestamp and private journal entry.
 
 These checks establish product behavior. They do not establish model accuracy, environmental impact, or a causal change in participant motivation.
+
+## Model-response handling update
+
+The generic incomplete-analysis error was investigated using the configured `deepseek/deepseek-v4.1-flash-1017` model. Its OpenRouter listing reported image-input and structured-output support. Two synthetic probes, with two posts and ten posts, both returned complete, valid findings. These probes used an app-icon illustration and invented captions, with no Instagram content. The precise real-profile response that triggered the screenshot was not retained and could not be reconstructed.
+
+The request now constrains the schema to the exact supplied post count. The parser retains valid partial findings, explicitly marks missing indices as unanalysed, derives category counts from returned findings only, and supplies clearly identified project text for missing summary prose. Truncated responses report the output-token budget. Empty or invalid evidence remains an error. Regression tests cover these cases, including the widget's partial-coverage display. The backend was restarted with its existing model configuration.
