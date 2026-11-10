@@ -14,6 +14,6 @@ for (const target of ['chromium', 'firefox']) {
     manifest.browser_specific_settings = { gecko: { id: 'evergreen-climate@local.example', strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } } };
   }
   await writeFile(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
-  await build({ entryPoints: ['extension/content.js', 'extension/background.js', 'extension/popup.js'], outdir, bundle: true, format: 'iife', target: ['chrome120', 'firefox140'], minify: true });
+  await build({ entryPoints: ['extension/content.js', 'extension/background.js', 'extension/popup.js'], outdir, bundle: true, format: 'iife', loader: { '.css': 'text' }, target: ['chrome120', 'firefox140'], minify: true });
   console.log(`Built ${outdir}`);
 }

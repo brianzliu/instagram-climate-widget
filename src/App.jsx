@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, Bike, Bus, CalendarDays, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Globe2, HelpCircle, LayoutDashboard, Leaf, List, LoaderCircle, LockKeyhole, Plus, Recycle, Settings2, ShieldCheck, Sparkles, Sprout, Trash2, Users, Utensils, X } from 'lucide-react';
 import { ACTIONS, CATEGORIES, blankJournal, chartBuckets, createAction, dateKey, inRange, periodRange, stats } from './domain.js';
-import { downloadFile, extensionAPI, loadJournal, saveJournal } from './storage.js';
+import { downloadFile, extensionAPI, JOURNAL_KEYS, loadJournal, saveJournal } from './storage.js';
 
 const nav = [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'profiles', label: 'Profile insights', icon: Users }, { id: 'timeline', label: 'My action journal', icon: List }, { id: 'wrapped', label: 'Climate Wrapped', icon: Sparkles }];
 const categoryIcons = { transport: Bus, food: Utensils, circular: Recycle };
@@ -67,6 +67,12 @@ export default function App() {
   const [page, setPage] = useState('overview'); const [mode, setMode] = useState(extensionAPI ? 'personal' : 'demo'); const [journal, setJournal] = useState(null); const [anchor, setAnchor] = useState(new Date()); const [period, setPeriod] = useState('month'); const [modal, setModal] = useState(null); const [toast, setToast] = useState(''); const [error, setError] = useState(''); const [filter, setFilter] = useState('all'); const [query, setQuery] = useState(''); const [health, setHealth] = useState(null);
   const toastTimer = useRef();
   useEffect(() => { let canceled = false; setJournal(null); loadJournal(mode).then(data => { if (!canceled) setJournal(data); }).catch(e => setError(e.message)); return () => { canceled = true; }; }, [mode]);
+  useEffect(() => {
+    const changed = (changes, area) => { if (area === 'local' && changes[JOURNAL_KEYS[mode]]?.newValue) setJournal(changes[JOURNAL_KEYS[mode]].newValue); };
+    const webChanged = e => { if (e.key === JOURNAL_KEYS[mode] && e.newValue) { try { setJournal(JSON.parse(e.newValue)); } catch {} } };
+    extensionAPI?.storage.onChanged.addListener(changed); window.addEventListener('storage', webChanged);
+    return () => { extensionAPI?.storage.onChanged.removeListener(changed); window.removeEventListener('storage', webChanged); };
+  }, [mode]);
   useEffect(() => { if (location.hash === '#profiles') setPage('profiles'); if (location.hash === '#settings') setPage('settings'); }, []);
   const notify = message => { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); };
   const update = async next => { await saveJournal(mode, next); setJournal(next); };
