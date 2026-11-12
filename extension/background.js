@@ -1,5 +1,6 @@
 import { readPostPage } from './collector.js';
 import { MAX_PHOTOS_PER_POST } from '../src/analysis-limits.js';
+import { mergeProfileIntoJournal } from '../src/journal-observations.js';
 const api = globalThis.browser || chrome;
 const API_URL = 'http://127.0.0.1:8787';
 const captures = new Map();
@@ -59,7 +60,7 @@ async function fetchImage(url) {
 async function handle(message, sender) {
   if (!isInstagram(sender) && !isExtension(sender)) throw new Error('Unsupported sender.');
   if (message.type === 'HEALTH') return request('/health');
-  if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL('index.html#profiles') }).then(() => ({ ok: true }));
+  if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL('index.html#journal') }).then(() => ({ ok: true }));
   if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id, message.maxPhotos);
   if (message.type === 'FETCH_IMAGE' && isInstagram(sender)) return fetchImage(message.url);
   if (message.type === 'CANCEL_CAPTURE') { const id = captures.get(sender.tab?.id); if (id) await api.tabs.remove(id).catch(() => {}); return { ok: true }; }
@@ -73,8 +74,7 @@ async function handle(message, sender) {
     if (!profile || !/^[\w.]{1,30}$/.test(profile.username) || !profile.analysis?.categories) throw new Error('Invalid analysis.');
     const key = 'evergreen:personal:v1'; const result = await api.storage.local.get(key);
     const journal = result[key] || { version: 1, actions: [], observations: [], responses: [] };
-    journal.observations = [profile, ...journal.observations.filter(p => p.username !== profile.username)];
-    await api.storage.local.set({ [key]: journal }); return { ok: true };
+    await api.storage.local.set({ [key]: mergeProfileIntoJournal(journal, profile) }); return { ok: true };
   }
   throw new Error('Unknown Evergreen request.');
 }

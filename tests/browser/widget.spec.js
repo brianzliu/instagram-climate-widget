@@ -15,7 +15,7 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
     window.requests=[];window.saved=[];
     window.chrome={runtime:{sendMessage:async data=>{window.requests.push(data.type);
       if(data.type==='HEALTH') return {configured:true,model:'test/vision'};
-      if(data.type==='COLLECT_POST') return {caption:'A vegan lunch.',captionSource:'post heading',images:[{url:'https://media.cdninstagram.com/photo.jpg'}],warnings:[],isVideo:false};
+      if(data.type==='COLLECT_POST') return {caption:'A vegan lunch.',captionSource:'post heading',publishedAt:'2024-02-29T18:00:00Z',dateSource:'post permalink time',images:[{url:'https://media.cdninstagram.com/photo.jpg'}],warnings:[],isVideo:false};
       if(data.type==='FETCH_IMAGE') return {dataUrl:image,originalBytes:100000};
       if(data.type==='START_ANALYSIS'){window.sentPosts=data.posts;return {id:'11111111-1111-4111-8111-111111111111'};}
       if(data.type==='ANALYSIS_STATUS') return {state:'done',result:{analysis:answer,model:'test/vision'}};
@@ -31,8 +31,9 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   expect(await page.evaluate(()=>sentPosts.every(p=>p.caption==='A vegan lunch.'&&p.images[0].startsWith('data:image/jpeg;base64,')))).toBe(true);
   await widget.getByRole('button',{name:'View evidence & collection notes'}).click();
   await expect(widget.getByText('Caption:',{exact:false}).first()).toBeVisible();
-  await widget.getByRole('button',{name:'Save to my private journal'}).click();
   await expect(widget.getByRole('button',{name:'Saved to your private journal'})).toBeVisible();
+  expect(await page.evaluate(()=>saved.length)).toBe(1);
+  expect(await page.evaluate(()=>saved[0].posts.every(p=>p.publishedAt==='2024-02-29T18:00:00Z'))).toBe(true);
   expect(await page.evaluate(()=>saved[0].posts.every(p=>!p.images))).toBe(true);
   await page.screenshot({path:'test-results/profile-widget.png',fullPage:true});
   await page.evaluate(()=>{history.pushState({},'', '/anotherprofile/'); document.querySelector('header h2').textContent='anotherprofile';});
@@ -59,12 +60,13 @@ test('partial model findings stay visible with explicit coverage and unanalysed 
 });
 
 test('collector reads full caption and advances a carousel without reading comments', async ({ page }) => {
-  const html=`<main><article><img alt="author profile picture" src="https://media.cdninstagram.com/avatar.jpg" style="width:40px;height:40px"/><h1>I took the bus, then made a vegan lunch.</h1><img id="photo" src="https://media.cdninstagram.com/one.jpg" style="width:500px;height:500px"/><button id="next" aria-label="Next">Next</button><p>Comment: I went on a flight!</p></article></main><script>document.getElementById('next').onclick=()=>{document.getElementById('photo').src='https://media.cdninstagram.com/two.jpg';document.getElementById('next').remove();}</script>`;
+  const html=`<main><article><img alt="author profile picture" src="https://media.cdninstagram.com/avatar.jpg" style="width:40px;height:40px"/><h1>I took the bus, then made a vegan lunch.</h1><img id="photo" src="https://media.cdninstagram.com/one.jpg" style="width:500px;height:500px"/><button id="next" aria-label="Next">Next</button><li>Comment: I went on a flight! <time datetime="2026-11-11T12:00:00Z">Yesterday</time></li><a href="/p/test/"><time datetime="2024-02-29T18:00:00Z">February 29, 2024</time></a></article></main><script>document.getElementById('next').onclick=()=>{document.getElementById('photo').src='https://media.cdninstagram.com/two.jpg';document.getElementById('next').remove();}</script>`;
   await page.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:html}));
   await page.route('https://media.cdninstagram.com/**',r=>r.fulfill({contentType:'image/png',body:Buffer.from(IMAGE.split(',')[1],'base64')}));
   await page.goto('https://www.instagram.com/p/test/');
   const result=await page.evaluate(readPostPage);
   expect(result.caption).toBe('I took the bus, then made a vegan lunch.');expect(result.images).toHaveLength(2);expect(result.images.every(i=>!i.url.includes('avatar'))).toBe(true);
+  expect(result.publishedAt).toBe('2024-02-29T18:00:00.000Z');expect(result.dateSource).toBe('post permalink time');
 });
 
 test('unconfigured OpenRouter shows a setup error without collecting posts', async ({ page }) => {
@@ -118,4 +120,5 @@ test('collector stops advancing an eight-slide carousel after two photos', async
   const result=await page.evaluate(readPostPage);
   expect(result.images).toHaveLength(2); expect(await page.evaluate(()=>slide)).toBe(1);
   expect(result.caption).toBe('Full caption stays available.'); expect(result.warnings.some(w=>w.includes('Photo limit'))).toBe(true);
+  expect(result.publishedAt).toBeNull();expect(result.publishedDate).toBeNull();
 });

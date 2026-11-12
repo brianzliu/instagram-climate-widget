@@ -71,7 +71,7 @@ async function analyze() {
         try { const raw = await message({ type: 'FETCH_IMAGE', url: photo.url }); stillHere(); const compressed = await compressImage(raw.dataUrl); originalBytes += raw.originalBytes; compressedBytes += Math.round(compressed.length * .75); images.push(compressed); photosCollected++; }
         catch (e) { stillHere(); data.warnings.push(`Photo ${j + 1}: ${e.message}`); }
       }
-      collected.push({ url: posts[i].url, caption: data.caption, captionSource: data.captionSource, images, warnings: data.warnings, isVideo: data.isVideo });
+      collected.push({ url: posts[i].url, caption: data.caption, captionSource: data.captionSource, publishedAt: data.publishedAt || null, publishedDate: data.publishedDate || null, dateSource: data.dateSource || 'unknown', images, warnings: data.warnings, isVideo: data.isVideo });
     }
     stillHere();
     if (!collected.some(p => p.images.length)) throw new Error('No photos could be read. Check Instagram media permissions in your browser.');
@@ -93,6 +93,12 @@ async function analyze() {
     coverage.modelPostsAnalyzed = response.analysis.coverage?.analyzedPosts ?? response.analysis.posts.length;
     coverage.warnings.push(...(response.analysis.coverage?.notes || []));
     result = { id: crypto.randomUUID(), username, analyzedAt: new Date().toISOString(), analysis: response.analysis, model: response.model, usage: response.usage, coverage, posts: collected.map(({ images, ...post }) => ({ ...post, photoCount: images.length })) };
+    try {
+      await message({ type: 'SAVE_PROFILE', profile: result }); result.savedToJournal = true;
+    } catch {
+      result.savedToJournal = false;
+      result.coverage.warnings.push('Automatic journal save failed. Use Save to my private journal to retry.');
+    }
     // Source images are discarded after the request. Only text findings and coverage are retained in memory.
     showResults(result);
   } catch (e) { if (currentUsername === username) { if (canceled) { busy = false; render(); } else showError(e); } }
@@ -101,14 +107,14 @@ async function analyze() {
 
 function showResults(data) {
   const { analysis, coverage } = data;
-  shell(`<h2>@${escape(data.username)}</h2><p>${escape(analysis.summary)}</p><div class="stats">${[['transport', 'Transport'], ['food', 'Food'], ['circular', 'Reuse & repair']].map(([id, label]) => { const c = analysis.categories[id]; return `<div class="stat"><strong>${c.supportive}</strong><span>${label}</span><small>${c.higherImpact} higher-impact<br />${c.uncertain} uncertain</small></div>`; }).join('')}</div><div class="coverage">${coverage.postsRead}/${coverage.postsRequested} posts read · ${coverage.photos} photos · ${coverage.captions} captions<br />${Math.round(coverage.compressedBytes / 1024)} KB uploaded${coverage.originalBytes ? ` · ${Math.round((1 - coverage.compressedBytes / coverage.originalBytes) * 100)}% smaller` : ''}</div>${coverage.warnings.length ? `<div class="warnings">${coverage.warnings.length} collection notes. Some content may be missing.</div>` : ''}<button class="details-toggle" id="details" aria-expanded="false">View evidence & collection notes ↓</button><div class="scroll" id="evidence" hidden><div class="findings">${analysis.posts.map(p => `<div class="finding"><strong>Post ${p.index}<span class="badge">${escape(p.signal)}</span><span class="badge">${escape(p.confidence)} confidence</span></strong><p>${escape(p.observation)}</p><p>${escape(p.evidence)}</p><p><b>Caption:</b> ${escape(data.posts[p.index - 1]?.caption || 'Unavailable')}</p><a href="${escape(data.posts[p.index - 1]?.url)}" target="_blank" rel="noreferrer">View original post ↗</a></div>`).join('')}</div>${coverage.warnings.map(w => `<p>${escape(w)}</p>`).join('')}<p class="limit-note">${escape(analysis.limitations)}</p><p class="duration">${escape(data.model)} · ${escape(new Date(data.analyzedAt).toLocaleString())}</p></div><button class="primary" id="save">Save to my private journal</button><button class="secondary" id="again">Analyze again</button>`);
+  shell(`<h2>@${escape(data.username)}</h2><p>${escape(analysis.summary)}</p><div class="stats">${[['transport', 'Transport'], ['food', 'Food'], ['circular', 'Reuse & repair']].map(([id, label]) => { const c = analysis.categories[id]; return `<div class="stat"><strong>${c.supportive}</strong><span>${label}</span><small>${c.higherImpact} higher-impact<br />${c.uncertain} uncertain</small></div>`; }).join('')}</div><div class="coverage">${coverage.postsRead}/${coverage.postsRequested} posts read · ${coverage.photos} photos · ${coverage.captions} captions<br />${Math.round(coverage.compressedBytes / 1024)} KB uploaded${coverage.originalBytes ? ` · ${Math.round((1 - coverage.compressedBytes / coverage.originalBytes) * 100)}% smaller` : ''}</div>${coverage.warnings.length ? `<div class="warnings">${coverage.warnings.length} collection notes. Some content may be missing.</div>` : ''}<button class="details-toggle" id="details" aria-expanded="false">View evidence & collection notes ↓</button><div class="scroll" id="evidence" hidden><div class="findings">${analysis.posts.map(p => `<div class="finding"><strong>Post ${p.index}<span class="badge">${escape(p.signal)}</span><span class="badge">${escape(p.confidence)} confidence</span></strong><p>${escape(p.observation)}</p><p>${escape(p.evidence)}</p><p><b>Caption:</b> ${escape(data.posts[p.index - 1]?.caption || 'Unavailable')}</p><a href="${escape(data.posts[p.index - 1]?.url)}" target="_blank" rel="noreferrer">View original post ↗</a></div>`).join('')}</div>${coverage.warnings.map(w => `<p>${escape(w)}</p>`).join('')}<p class="limit-note">${escape(analysis.limitations)}</p><p class="duration">${escape(data.model)} · ${escape(new Date(data.analyzedAt).toLocaleString())}</p></div><button class="primary" id="save" ${data.savedToJournal ? 'disabled' : ''}>${data.savedToJournal ? '✓ Saved to your private journal' : 'Save to my private journal'}</button><button class="secondary" id="again">Analyze again</button>`);
   if (analysis.coverage?.missingIndices?.length) {
     const notice = document.createElement('p'); notice.className = 'warnings'; notice.setAttribute('role', 'status');
     notice.textContent = `Model findings: ${analysis.coverage.analyzedPosts} of ${analysis.coverage.expectedPosts} posts. Missing findings are excluded from the counts.`;
     shadow.getElementById('details')?.before(notice);
   }
   shadow.getElementById('details')?.addEventListener('click', e => { const area = shadow.getElementById('evidence'); area.hidden = !area.hidden; e.target.setAttribute('aria-expanded', String(!area.hidden)); e.target.textContent = area.hidden ? 'View evidence & collection notes ↓' : 'Hide evidence ↑'; positionWidget(); });
-  shadow.getElementById('save')?.addEventListener('click', async e => { e.target.disabled = true; try { await message({ type: 'SAVE_PROFILE', profile: data }); e.target.textContent = '✓ Saved to your private journal'; } catch (error) { e.target.disabled = false; e.target.textContent = 'Save failed. Try again.'; } });
+  shadow.getElementById('save')?.addEventListener('click', async e => { e.target.disabled = true; try { await message({ type: 'SAVE_PROFILE', profile: data }); data.savedToJournal = true; e.target.textContent = '✓ Saved to your private journal'; } catch (error) { e.target.disabled = false; e.target.textContent = 'Save failed. Try again.'; } });
   shadow.getElementById('again')?.addEventListener('click', () => { result = null; render(); });
   positionWidget();
 }
