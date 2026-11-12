@@ -19,6 +19,24 @@ export async function readPostPage({ maxPhotos = 2 } = {}) {
   let captionSource = caption ? 'post heading' : 'missing';
   if (!caption && meta) { caption = meta; captionSource = 'page description, may include metadata'; }
   if (!caption) warnings.push('Caption unavailable.');
+  const canonicalPath = path => path.replace(/^\/[\w.]+\/(p|reel)\//, '/$1/').replace(/\/$/, '');
+  const postTime = [...article.querySelectorAll('time[datetime]')].find(time => {
+    const link = time.closest('a[href]');
+    if (!link || time.closest('li')) return false;
+    try {
+      const url = new URL(link.href, location.href);
+      return !url.searchParams.has('comment_id') && !url.searchParams.has('reply_comment_id') && canonicalPath(url.pathname) === canonicalPath(location.pathname);
+    } catch { return false; }
+  });
+  // Prefer the post permalink's timestamp over timestamps attached to comments.
+  const rawDate = postTime?.getAttribute('datetime') || document.querySelector('meta[property="article:published_time"]')?.content || '';
+  let publishedAt = null, publishedDate = null, dateSource = 'unknown';
+  if (/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(rawDate) && !Number.isNaN(Date.parse(rawDate))) {
+    if (rawDate.length === 10 && new Date(`${rawDate}T12:00:00Z`).toISOString().slice(0, 10) === rawDate) publishedDate = rawDate;
+    else if (rawDate.includes('T')) publishedAt = new Date(rawDate).toISOString();
+    if (publishedAt || publishedDate) dateSource = postTime ? 'post permalink time' : 'page publication metadata';
+  }
+  if (!publishedAt && !publishedDate) warnings.push('Published date unavailable. The journal will mark it unknown.');
   const images = new Map();
   let isVideo = false;
   function capture() {
@@ -56,7 +74,7 @@ export async function readPostPage({ maxPhotos = 2 } = {}) {
   if (hasCarousel && images.size < 2) warnings.push('Only the visible carousel cover could be read.');
   if (isVideo) warnings.push('Video cover analyzed only. Video playback and audio are not analyzed.');
   if (!images.size) warnings.push('No accessible post photos found.');
-  return { caption: caption.slice(0, 10000), captionSource, images: [...images.values()].slice(0, photoLimit), warnings, isVideo };
+  return { caption: caption.slice(0, 10000), captionSource, publishedAt, publishedDate, dateSource, images: [...images.values()].slice(0, photoLimit), warnings, isVideo };
 }
 
 export function profileFromDocument(doc, pathname) {
