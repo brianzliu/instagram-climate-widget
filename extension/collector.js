@@ -1,6 +1,8 @@
 // This self-contained function runs in an isolated world in a temporary post tab.
 // It uses rendered DOM only, with no private Instagram endpoints or credentials.
-export async function readPostPage() {
+export async function readPostPage({ maxPhotos = 2 } = {}) {
+  // Keep this function self-contained for scripting.executeScript serialization.
+  const photoLimit = Number.isInteger(maxPhotos) ? Math.max(1, Math.min(2, maxPhotos)) : 2;
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const warnings = [];
   let article;
@@ -22,6 +24,7 @@ export async function readPostPage() {
   function capture() {
     // Ignore profile avatars and comment images. Keep rendered post-sized media.
     for (const img of article.querySelectorAll('img')) {
+      if (images.size >= photoLimit) break;
       const rect = img.getBoundingClientRect();
       if (rect.width < 180 || rect.height < 140 || !img.src || img.alt?.toLowerCase().includes('profile picture')) continue;
       if (img.closest('a[href^="/p/"], a[href^="/reel/"]')) continue;
@@ -32,26 +35,28 @@ export async function readPostPage() {
     }
     for (const video of article.querySelectorAll('video')) {
       isVideo = true;
+      if (images.size >= photoLimit) continue;
       if (video.poster) { try { const url = new URL(video.poster); if (/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(url.hostname)) images.set(url.pathname, { url: url.href, alt: 'Video cover only' }); } catch {} }
     }
   }
   capture();
-  // Instagram carousels are limited to 20 slides. Walk the visible Next control.
+  // Stop walking a carousel as soon as this post's photo budget is filled.
   const nextButton = () => [...article.querySelectorAll('button, [role="button"]')].find(el => {
     const label = (el.getAttribute('aria-label') || el.querySelector('svg')?.getAttribute('aria-label') || '').trim();
     return /^(Next|Next slide|Siguiente|Suivant|Weiter|Avanti|Próximo|下一步|下一张|次へ)$/i.test(label) && !el.disabled && el.getBoundingClientRect().width > 0;
   });
   let next = nextButton();
-  for (let i = 0; i < 19 && next; i++) {
+  for (let i = 0; i < 19 && next && images.size < photoLimit; i++) {
     next.click(); await pause(650);
     capture(); next = nextButton();
   }
-  if (next) warnings.push('Carousel may contain inaccessible slides or an unsupported Next control.');
+  if (next && images.size >= photoLimit) warnings.push(`Photo limit: only the first ${photoLimit} accessible photos from this post were collected.`);
+  else if (next) warnings.push('Carousel may contain inaccessible slides or an unsupported Next control.');
   const hasCarousel = article.querySelector('[aria-label*="slide"], [aria-label*="Slide"], [aria-label*="Carousel"]');
   if (hasCarousel && images.size < 2) warnings.push('Only the visible carousel cover could be read.');
   if (isVideo) warnings.push('Video cover analyzed only. Video playback and audio are not analyzed.');
   if (!images.size) warnings.push('No accessible post photos found.');
-  return { caption: caption.slice(0, 10000), captionSource, images: [...images.values()].slice(0, 20), warnings, isVideo };
+  return { caption: caption.slice(0, 10000), captionSource, images: [...images.values()].slice(0, photoLimit), warnings, isVideo };
 }
 
 export function profileFromDocument(doc, pathname) {

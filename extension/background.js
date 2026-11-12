@@ -1,4 +1,5 @@
 import { readPostPage } from './collector.js';
+import { MAX_PHOTOS_PER_POST } from '../src/analysis-limits.js';
 const api = globalThis.browser || chrome;
 const API_URL = 'http://127.0.0.1:8787';
 const captures = new Map();
@@ -26,13 +27,14 @@ function waitForTab(tabId) {
   });
 }
 
-async function collectPost(url, ownerId) {
+async function collectPost(url, ownerId, requestedPhotos = MAX_PHOTOS_PER_POST) {
   if (!POST_URL.test(url)) throw new Error('Invalid Instagram post URL.');
   if (captures.has(ownerId)) throw new Error('A post is already being read.');
   const tab = await api.tabs.create({ url, active: false }); captures.set(ownerId, tab.id);
   try {
     await waitForTab(tab.id);
-    const results = await api.scripting.executeScript({ target: { tabId: tab.id }, func: readPostPage });
+    const maxPhotos = Number.isInteger(requestedPhotos) ? Math.max(1, Math.min(MAX_PHOTOS_PER_POST, requestedPhotos)) : MAX_PHOTOS_PER_POST;
+    const results = await api.scripting.executeScript({ target: { tabId: tab.id }, func: readPostPage, args: [{ maxPhotos }] });
     if (!results[0]?.result) throw new Error('Could not read this post.');
     return results[0].result;
   } finally { captures.delete(ownerId); await api.tabs.remove(tab.id).catch(() => {}); }
@@ -58,7 +60,7 @@ async function handle(message, sender) {
   if (!isInstagram(sender) && !isExtension(sender)) throw new Error('Unsupported sender.');
   if (message.type === 'HEALTH') return request('/health');
   if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL('index.html#profiles') }).then(() => ({ ok: true }));
-  if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id);
+  if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id, message.maxPhotos);
   if (message.type === 'FETCH_IMAGE' && isInstagram(sender)) return fetchImage(message.url);
   if (message.type === 'CANCEL_CAPTURE') { const id = captures.get(sender.tab?.id); if (id) await api.tabs.remove(id).catch(() => {}); return { ok: true }; }
   if (message.type === 'START_ANALYSIS' && isInstagram(sender)) return request('/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posts: message.posts }) });

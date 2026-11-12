@@ -29,6 +29,30 @@ test('only bounded inline images reach OpenRouter, with captions paired by post'
   assert.throws(() => schemaForPostCount(0));
 });
 
+test('photo budgets cap the complete request and block legacy 80-photo uploads before billing', async t => {
+  const bounded = Array.from({ length: 10 }, () => ({ ...post, images: [...post.images, ...post.images] }));
+  assert.equal(validateInput({ posts: bounded }).length, 10);
+  const request = buildRequest(bounded, 'test/model');
+  assert.equal(request.messages[1].content.filter(c => c.type === 'image_url').length, 20);
+  assert.equal(request.messages[1].content.filter(c => c.type === 'text' && c.text.includes('A vegan lunch.')).length, 10);
+  assert.throws(() => validateInput({ posts: [{ ...post, images: Array(3).fill(post.images[0]) }] }), /limited to 2 photos/);
+  const oversized = bounded.map(p => ({ ...p, images: Array(8).fill(post.images[0]) }));
+  assert.throws(() => validateInput({ posts: oversized }), /20 photos total/);
+  assert.throws(() => buildRequest(oversized, 'test/model'), /20 photos total/);
+  let calls = 0;
+  const server = createServer({ apiKey: 'test-key', fetchImpl: async () => { calls++; throw new Error('Oversized request must never reach OpenRouter.'); } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const headers = { Origin: 'moz-extension://test-extension', 'Content-Type': 'application/json' };
+  for (const path of ['/analyze', '/jobs']) {
+    const response = await fetch(url + path, { method: 'POST', headers, body: JSON.stringify({ posts: oversized }) });
+    assert.equal(response.status, 400); assert.match((await response.json()).error, /20 photos total/);
+  }
+  const health = await fetch(url + '/health', { headers }).then(r => r.json());
+  assert.equal(health.photoLimit, 20); assert.equal(health.photosPerPost, 2);
+  assert.equal(calls, 0);
+});
+
 test('partial model results expose missing indices without manufacturing category signals', () => {
   const partial = sampleAnalysis(2); partial.posts[1].index = 3;
   const result = parseModelAnalysis(JSON.stringify(partial), 4);

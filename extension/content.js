@@ -1,6 +1,7 @@
 import { profileFromDocument, gridPosts } from './collector.js';
 import { compressImage } from './compress.js';
 import styles from './widget.css';
+import { MAX_ANALYSIS_PHOTOS, MAX_PHOTOS_PER_POST, MAX_PROFILE_POSTS } from '../src/analysis-limits.js';
 
 const api = globalThis.browser || chrome;
 let host, shadow, profile, currentUsername, busy = false, canceled = false, result = null, collapsed = false;
@@ -17,7 +18,7 @@ function shell(body) {
 function render() {
   if (!shadow) return;
   if (result) return showResults(result);
-  shell(`<h2>@${escape(currentUsername)}</h2><p class="consent">Analyze sends compressed photos and captions to OpenRouter and your configured model provider. It opens temporary background tabs to read posts. No automatic sharing.</p><button class="primary" id="analyze" ${busy ? 'disabled' : ''}>${busy ? '<span class="spinner"></span>Analysis in progress…' : 'Analyze first 10 posts ↗'}</button><p class="duration">Pinned posts count. Video covers only. Usually 1–3 minutes.</p>`);
+  shell(`<h2>@${escape(currentUsername)}</h2><p class="consent">Analyze sends compressed photos and captions to OpenRouter and your configured model provider. It opens temporary background tabs to read posts. No automatic sharing.</p><button class="primary" id="analyze" ${busy ? 'disabled' : ''}>${busy ? '<span class="spinner"></span>Analysis in progress…' : 'Analyze first 10 posts ↗'}</button><p class="duration">Max ${MAX_ANALYSIS_PHOTOS} photos total · up to ${MAX_PHOTOS_PER_POST} per post. Captions included. Pinned posts count. Video covers only.</p>`);
   shadow.getElementById('analyze')?.addEventListener('click', analyze);
 }
 function showProgress(label, completed, total = 10) {
@@ -52,20 +53,22 @@ async function analyze() {
       posts = [...posts, ...gridPosts(document).filter(p => !seen.has(p.url))].slice(0, 10);
     }
     if (!posts.length) throw new Error('No accessible posts found. This may be a private profile, an empty grid, or a changed Instagram layout.');
-    const collected = []; let originalBytes = 0, compressedBytes = 0;
+    const collected = []; let originalBytes = 0, compressedBytes = 0, photosCollected = 0;
     for (let i = 0; i < posts.length; i++) {
       stillHere(); showProgress(`Reading post ${i + 1} of ${posts.length}…`, i, posts.length);
       let data;
-      try { data = await message({ type: 'COLLECT_POST', url: posts[i].url }); }
+      const photoBudget = Math.max(0, Math.min(MAX_PHOTOS_PER_POST, MAX_ANALYSIS_PHOTOS - photosCollected));
+      try { data = await message({ type: 'COLLECT_POST', url: posts[i].url, maxPhotos: photoBudget }); }
       catch (e) { stillHere(); data = { caption: '', captionSource: 'missing', images: [], warnings: [e.message], isVideo: false }; }
       if (!data.images.length && /^https:\/\//.test(posts[i].preview)) {
         data.images.push({ url: posts[i].preview });
         data.warnings.push('Using the grid cover because full post media was unavailable. Carousel coverage is incomplete.');
       }
       stillHere(); const images = [];
-      for (const [j, photo] of data.images.entries()) {
+      if (data.images.length > photoBudget) data.warnings.push(`Photo limit: only the first ${photoBudget} photos from this post are included.`);
+      for (const [j, photo] of data.images.slice(0, photoBudget).entries()) {
         stillHere(); showProgress(`Compressing post ${i + 1} · photo ${j + 1} of ${data.images.length}…`, i + .5, posts.length);
-        try { const raw = await message({ type: 'FETCH_IMAGE', url: photo.url }); stillHere(); const compressed = await compressImage(raw.dataUrl); originalBytes += raw.originalBytes; compressedBytes += Math.round(compressed.length * .75); images.push(compressed); }
+        try { const raw = await message({ type: 'FETCH_IMAGE', url: photo.url }); stillHere(); const compressed = await compressImage(raw.dataUrl); originalBytes += raw.originalBytes; compressedBytes += Math.round(compressed.length * .75); images.push(compressed); photosCollected++; }
         catch (e) { stillHere(); data.warnings.push(`Photo ${j + 1}: ${e.message}`); }
       }
       collected.push({ url: posts[i].url, caption: data.caption, captionSource: data.captionSource, images, warnings: data.warnings, isVideo: data.isVideo });
@@ -86,7 +89,7 @@ async function analyze() {
     }
     if (!response) throw new Error('Analysis took too long. The OpenRouter request may still finish on the backend.');
     if (currentUsername !== username || canceled) return;
-    const coverage = { postsRequested: 10, postsFound: posts.length, postsRead: collected.filter(p => p.images.length || p.caption).length, photos: collected.reduce((n, p) => n + p.images.length, 0), captions: collected.filter(p => p.caption).length, originalBytes, compressedBytes, warnings: collected.flatMap((p, i) => p.warnings.map(w => `Post ${i + 1}: ${w}`)) };
+    const coverage = { postsRequested: MAX_PROFILE_POSTS, postsFound: posts.length, postsRead: collected.filter(p => p.images.length || p.caption).length, photos: photosCollected, photoLimit: MAX_ANALYSIS_PHOTOS, photosPerPost: MAX_PHOTOS_PER_POST, captions: collected.filter(p => p.caption).length, originalBytes, compressedBytes, warnings: collected.flatMap((p, i) => p.warnings.map(w => `Post ${i + 1}: ${w}`)) };
     coverage.modelPostsAnalyzed = response.analysis.coverage?.analyzedPosts ?? response.analysis.posts.length;
     coverage.warnings.push(...(response.analysis.coverage?.notes || []));
     result = { id: crypto.randomUUID(), username, analyzedAt: new Date().toISOString(), analysis: response.analysis, model: response.model, usage: response.usage, coverage, posts: collected.map(({ images, ...post }) => ({ ...post, photoCount: images.length })) };
