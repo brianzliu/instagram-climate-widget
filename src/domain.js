@@ -54,7 +54,7 @@ export function createAction({ kind, date, note = '', source = 'manual' }) {
   if (!action || !/^\d{4}-\d{2}-\d{2}$/.test(date) || dateKey(new Date(`${date}T12:00:00`)) !== date || date > dateKey()) throw new Error('Choose an action and a valid date up to today.');
   return { id: crypto.randomUUID(), kind, category: action.category, title: action.label, date, note: note.trim().slice(0, 600), source };
 }
-export function blankJournal() { return { version: 1, actions: [], observations: [], responses: [] }; }
+export function blankJournal() { return { version: 1, actions: [], observations: [], observedPosts: [], responses: [] }; }
 export function demoJournal(now = new Date()) {
   const actions = [];
   const kinds = ['bus', 'plant', 'bus', 'reuse', 'walk', 'plant', 'bike', 'leftovers', 'bus', 'thrift', 'plant', 'repair'];

@@ -13,7 +13,7 @@ test('journal actions persist and remain separate from the demo', async ({ page 
   await dialog.getByPlaceholder('What made this possible?').fill('A protected bike lane made it possible.');
   await dialog.getByRole('button', { name: 'Save action' }).click();
   await expect(page.getByText('Rode my bike', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'My action journal', exact: true }).click();
+  await page.getByRole('button', { name: 'Journal', exact: true }).click();
   await page.getByRole('searchbox').fill('protected');
   await expect(page.getByText('Rode my bike', { exact: true })).toBeVisible();
   await page.getByRole('searchbox').fill('no-match');
@@ -28,6 +28,29 @@ test('journal actions persist and remain separate from the demo', async ({ page 
   await page.reload(); await page.getByRole('button', { name: 'Start my journal' }).click();
   await expect(page.getByText('Rode my bike', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('Instagram observations use published dates, keep unknown dates visible, and do not become personal actions', async ({ page }) => {
+  const current = new Date(); const today = `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`;
+  await page.addInitScript(({today})=>{
+    const observedPosts=[
+      {id:'instagram:old',username:'example',url:'https://www.instagram.com/p/old/',caption:'An older bus journey.',publishedDate:'2023-05-03',publishedAt:null,dateSource:'post permalink time',analyzedAt:new Date().toISOString(),finding:{category:'transport',signal:'supportive',observation:'An older transport observation.',evidence:'The caption describes a journey.',confidence:'medium'}},
+      {id:'instagram:today',username:'example',url:'https://www.instagram.com/p/today/',caption:'A plant-based meal.',publishedDate:today,dateSource:'page publication metadata',analyzedAt:new Date().toISOString(),finding:{category:'food',signal:'supportive',observation:'A current food observation.',evidence:'Caption evidence.',confidence:'medium'}},
+      {id:'instagram:unknown',username:'another',url:'https://www.instagram.com/p/unknown/',caption:'Undated caption.',publishedAt:null,publishedDate:null,dateSource:'unknown',analyzedAt:new Date().toISOString(),finding:null},
+    ];
+    localStorage.setItem('evergreen:personal:v1',JSON.stringify({version:1,actions:[],observations:[],observedPosts,responses:[]}));
+  },{today});
+  await page.goto('http://127.0.0.1:5173/#journal');await page.getByRole('button',{name:'Start my journal'}).click();
+  await expect(page.getByRole('tab',{name:'Instagram observations (3)'})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByText('May 3, 2023',{exact:true})).toBeVisible();
+  await expect(page.locator('.observation-published time').filter({hasText:'Published date unknown'})).toBeVisible();
+  await page.getByLabel('Observation dates').selectOption('period');
+  await expect(page.getByText('A current food observation.',{exact:true})).toBeVisible();
+  await expect(page.getByText('An older transport observation.',{exact:true})).toHaveCount(0);
+  await page.getByLabel('Observation dates').selectOption('unknown');
+  await expect(page.locator('.observation-entry')).toHaveCount(1);
+  await page.getByRole('button',{name:'Overview',exact:true}).click();
+  await expect(page.locator('.stats-row > div:first-child strong')).toHaveText(/^0/);
 });
 
 test('small screen layout stays within the viewport and supports keyboard dialogs', async ({ page }) => {
