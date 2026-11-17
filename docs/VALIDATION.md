@@ -1,5 +1,17 @@
 # MVP validation
 
+## Touch Grass 0.2 update
+
+Validated November 17, 2026. The extension, dashboard, popup, icons, recap exports, and distribution filenames now use Touch Grass. Legacy storage keys and the original Firefox add-on ID remain unchanged to preserve existing journals.
+
+- 18 unit/integration tests passed, including the hard 20-photo budget, journal date handling, and deduplication.
+- 12 browser tests passed, including the actual Chromium extension, automatic journal saving, caption/date evidence, demo isolation, and both desktop and mobile layouts.
+- The dashboard removes the large welcome banner and repeated copy. The profile widget keeps headline counts visible and expands evidence on demand. A small grass character and a lime accent provide the playful styling.
+- Desktop, mobile, and widget screenshots were visually inspected. No live Instagram content or paid model requests were used for this design update.
+- Both Firefox/Zen and Chromium/Comet packages were rebuilt. Permanent Firefox installation still requires Mozilla signing.
+
+The records below describe earlier MVP checks.
+
 Validated on November 10, 2026.
 
 ## Passing checks

@@ -1,8 +1,10 @@
 # Touch Grass
 
-A browser extension that places a climate insight widget beside an Instagram profile photo. It reads the first 10 accessible posts in grid order, collects their captions and carousel photos, compresses the photos locally, and asks a configurable OpenRouter vision model to describe the visible climate signals.
+A greener take on your feed. Touch Grass places a small climate insight widget beside an Instagram profile photo. It reads the first 10 accessible grid posts with a hard limit of 20 photos total, up to two per post, plus captions. Photos are compressed locally before a configurable OpenRouter vision model describes the visible signals.
 
 The companion journal includes personal action logging, week/month/year trends, category filters, notes, and a downloadable Climate Wrapped recap. A separate demo journal contains fictional records. Profile observations never count as your own actions.
+
+Version 0.2 introduces the Touch Grass name, grass icon, lighter dashboard, compact widget, and simplified popup. The original Firefox add-on ID and local storage keys are intentionally retained so existing journal data stays accessible when you reload the same extension. Internal legacy identifiers do not change the displayed product name.
 
 ## Quick start
 
@@ -68,13 +70,17 @@ Open `http://127.0.0.1:5173`. The browser preview starts with fictional demo rec
 1. The extension watches rendered Instagram profile pages and mounts a widget beside the profile photo. It handles navigation between profiles without requiring a full reload.
 2. Click **Analyze first 10 posts**. The widget explains the external upload before collection starts. Opening a profile alone never triggers a paid model request.
 3. The collector takes up to 10 distinct `/p/` or `/reel/` links from the grid, preserving grid order. Pinned posts count. It scrolls a bounded distance if fewer than 10 links are initially rendered.
-4. One temporary inactive tab at a time opens each post using the browser's existing Instagram session. The collector reads the rendered caption and advances accessible carousel controls, up to 20 slides. Each temporary tab closes after collection, including error paths.
+4. One temporary inactive tab at a time opens each post using the browser's existing Instagram session. The collector reads the caption and published-date metadata, collecting up to two accessible photos per post. It stops advancing the carousel at that limit. Each temporary tab closes after collection, including error paths.
 5. Media downloads come only from Instagram CDN domains. Each image is resized to a maximum edge of 448 pixels and encoded as JPEG at quality 0.62. No upscaling. The original aspect ratio is preserved. Large or unreadable media produce collection warnings.
 6. Captions stay paired with their posts. The backend submits one multimodal request to OpenRouter. The model receives low-detail image hints. Actual image token use depends on the model; reducing file size does not guarantee proportional token savings.
 7. The model identifies supportive, potentially higher-impact, uncertain, or irrelevant signals. Category counts are recomputed from validated per-post findings. No total carbon footprint or moral score is generated.
-8. Results show coverage, compressed upload size, per-post evidence, captions, confidence, and collection warnings. Choose **Save to my private journal** to retain the textual analysis. Previously saved analyses appear on return visits with their timestamp.
+8. Results show category signals and collection coverage. Expand **View evidence & collection notes** for captions, publication dates, confidence, upload size, and limitations. Completed analyses save automatically to **Journal → Instagram observations**. If a local save fails, a manual retry button appears. Previously saved analyses appear on return visits with their timestamp.
 
 Transport, food, and reuse/repair are the three supported categories. Video posts use visible cover frames only. Playback and audio are not analyzed. A caption may describe multiple carousel photos, so the model receives the caption once alongside all collected slides from that post.
+
+The 20-photo cap is enforced in the collector, upload preparation, and backend. Requests from older extension builds that exceed the limit are rejected before contacting OpenRouter. `OPENROUTER_MAX_TOKENS` controls output generation, not image-input tokens. The image cap bounds the number of photos; actual token usage still depends on the selected model and captions.
+
+Journal observations use the post's published date where accessible, with the analysis time recorded separately. Unknown publication dates stay marked unknown. Re-analysis updates matching post entries instead of duplicating them, while older observations remain available. Model findings are labelled for human review and do not automatically become personal climate actions.
 
 The request schema requires exactly one finding for every supplied post. If a provider nevertheless omits findings, valid findings remain available as a clearly labelled partial analysis. Missing posts are marked unanalysed and excluded from category counts. Missing summary prose uses explicit project copy rather than invented model observations. Empty findings, duplicate indices, and invalid evidence still fail validation. Token-budget exhaustion has a separate error explaining the output limit. No automatic second paid request is made.
 
