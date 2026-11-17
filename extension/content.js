@@ -9,7 +9,7 @@ const escape = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp
 async function message(data) { const response = await api.runtime.sendMessage(data); if (response?.error) throw new Error(response.error); return response; }
 
 function shell(body) {
-  shadow.innerHTML = `<style>${styles}</style>${collapsed ? '<button class="collapsed" id="expand">↗ evergreen.</button>' : `<div class="widget"><div class="widget-header"><span class="leaf">♧</span><span class="wordmark">evergreen.</span><button class="close" id="collapse" aria-label="Collapse climate widget">×</button></div><div class="body">${body}</div><div class="foot"><button class="text-link" id="journal">My journal ↗</button></div></div>`}`;
+  shadow.innerHTML = `<style>${styles}</style>${collapsed ? '<button class="collapsed" id="expand">↗ touch grass.</button>' : `<div class="widget"><div class="widget-header"><span class="leaf">♧</span><span class="wordmark">touch grass.</span><button class="close" id="collapse" aria-label="Collapse climate widget">×</button></div><div class="body">${body}</div><div class="foot"><button class="text-link" id="journal">My journal ↗</button></div></div>`}`;
   shadow.getElementById('collapse')?.addEventListener('click', () => { collapsed = true; render(); });
   shadow.getElementById('expand')?.addEventListener('click', () => { collapsed = false; render(); });
   shadow.getElementById('journal')?.addEventListener('click', () => message({ type: 'OPEN_JOURNAL' }).catch(showError));
@@ -139,7 +139,7 @@ function mount() {
   if (host?.isConnected && currentUsername === next.username) { positionWidget(); return; }
   if (host) { canceled = true; host.remove(); message({ type: 'CANCEL_CAPTURE' }).catch(() => {}); }
   currentUsername = next.username; result = null; collapsed = false;
-  host = document.createElement('evergreen-profile-widget'); host.setAttribute('aria-label', 'Evergreen climate profile insights');
+  host = document.createElement('evergreen-profile-widget'); host.setAttribute('aria-label', 'Touch Grass climate profile insights');
   shadow = host.attachShadow({ mode: 'open' }); document.documentElement.append(host); render(); positionWidget();
   const mountedUsername = currentUsername;
   api.storage.local.get('evergreen:personal:v1').then(stored => {

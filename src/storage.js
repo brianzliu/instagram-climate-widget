@@ -1,5 +1,6 @@
 import { blankJournal, demoJournal } from './domain.js';
 export const extensionAPI = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome?.runtime?.id ? globalThis.chrome : null;
+// Preserve the original keys so the Touch Grass rename keeps existing journals.
 export const JOURNAL_KEYS = { personal: 'evergreen:personal:v1', demo: 'evergreen:demo:v1' };
 export async function getValue(key, fallback) {
   if (extensionAPI) { const result = await extensionAPI.storage.local.get(key); return result[key] ?? fallback; }

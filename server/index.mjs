@@ -39,7 +39,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
   let active = false; const jobs = new Map();
   async function runModel(posts) {
     const maxTokens = Math.min(12000, Math.max(1000, Number(process.env.OPENROUTER_MAX_TOKENS) || 5000));
-    const upstream = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Evergreen Climate Research' }, body: JSON.stringify(buildRequest(posts, model, maxTokens)), signal: AbortSignal.timeout(180000) });
+    const upstream = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Touch Grass Climate Research' }, body: JSON.stringify(buildRequest(posts, model, maxTokens)), signal: AbortSignal.timeout(180000) });
     if (!upstream.ok) throw publicError({ 401: 'OpenRouter rejected the API key.', 402: 'Your OpenRouter account needs credits.', 429: 'OpenRouter is rate-limiting requests. Try again later.' }[upstream.status] || `OpenRouter returned ${upstream.status}. Check that ${model} accepts images, structured outputs, and your provider privacy settings.`);
     const result = await upstream.json(); const choice = result.choices?.[0]; const raw = choice?.message?.content;
     if (choice?.finish_reason === 'length' || choice?.native_finish_reason === 'MAX_TOKENS') throw publicError('The model hit its output-token limit before finishing. Increase OPENROUTER_MAX_TOKENS in .env or choose a model with less reasoning overhead, then restart the backend.');
@@ -49,7 +49,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     try { analysis = parseModelAnalysis(raw, posts.length); }
     catch (e) {
       // Record format metadata only. Never log images, captions, model prose, or API keys.
-      console.warn('[Evergreen] Analysis output rejected', { model, expectedPosts: posts.length, finishReason: choice?.finish_reason, completionTokens: result.usage?.completion_tokens, reason: e.message });
+      console.warn('[Touch Grass] Analysis output rejected', { model, expectedPosts: posts.length, finishReason: choice?.finish_reason, completionTokens: result.usage?.completion_tokens, reason: e.message });
       throw publicError(e.message);
     }
     return { analysis, model, usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: result.usage.completion_tokens, cost: result.usage.cost } : null };
@@ -58,7 +58,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     const origin = req.headers.origin;
     const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
     if (![ `127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}` ].includes(req.headers.host)) return send(403, { error: 'Use the loopback backend address.' });
-    if (!validOrigin(origin) && !(!origin && req.headers['x-evergreen-client'] === 'extension' && req.headers['sec-fetch-site'] !== 'cross-site')) return send(403, { error: 'Only the Evergreen extension or local development app may use this backend.' });
+    if (!validOrigin(origin) && !(!origin && req.headers['x-evergreen-client'] === 'extension' && req.headers['sec-fetch-site'] !== 'cross-site')) return send(403, { error: 'Only the Touch Grass extension or local development app may use this backend.' });
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -94,5 +94,5 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
   });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  createServer().listen(8787, '127.0.0.1', () => console.log('Evergreen backend listening at http://127.0.0.1:8787. API keys remain on this machine.'));
+  createServer().listen(8787, '127.0.0.1', () => console.log('Touch Grass backend listening at http://127.0.0.1:8787. API keys remain on this machine.'));
 }

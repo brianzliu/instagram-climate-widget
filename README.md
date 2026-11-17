@@ -1,4 +1,4 @@
-# Evergreen
+# Touch Grass
 
 A browser extension that places a climate insight widget beside an Instagram profile photo. It reads the first 10 accessible posts in grid order, collects their captions and carousel photos, compresses the photos locally, and asks a configurable OpenRouter vision model to describe the visible climate signals.
 
@@ -78,7 +78,7 @@ Transport, food, and reuse/repair are the three supported categories. Video post
 
 The request schema requires exactly one finding for every supplied post. If a provider nevertheless omits findings, valid findings remain available as a clearly labelled partial analysis. Missing posts are marked unanalysed and excluded from category counts. Missing summary prose uses explicit project copy rather than invented model observations. Empty findings, duplicate indices, and invalid evidence still fail validation. Token-budget exhaustion has a separate error explaining the output limit. No automatic second paid request is made.
 
-If you see an old generic "incomplete analysis" message after an update, restart the backend, reload Evergreen in the browser extension manager, and refresh Instagram. Backend diagnostic logs include format metadata only, not captions, photos, model prose, or API keys.
+If you see an old generic "incomplete analysis" message after an update, restart the backend, reload Touch Grass in the browser extension manager, and refresh Instagram. Backend diagnostic logs include format metadata only, not captions, photos, model prose, or API keys.
 
 ## Data and privacy
 

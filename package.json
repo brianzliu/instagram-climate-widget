@@ -1,6 +1,6 @@
 {
-  "name": "evergreen-climate-extension",
-  "version": "0.1.0",
+  "name": "touch-grass-extension",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -24,7 +24,7 @@ test('journal actions persist and remain separate from the demo', async ({ page 
   await page.getByRole('button', { name: 'Demo mode', exact: true }).click();
   await page.getByRole('button', { name: 'Climate Wrapped', exact: true }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save my recap' }).click();
-  expect((await download).suggestedFilename()).toBe('evergreen-wrapped.svg');
+  expect((await download).suggestedFilename()).toBe('touch-grass-wrapped.svg');
   await page.reload(); await page.getByRole('button', { name: 'Start my journal' }).click();
   await expect(page.getByText('Rode my bike', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -72,7 +72,7 @@ test('all journal screens render and controls change time periods', async ({ pag
   await expect(page.locator('.stats-row > div:first-child strong')).toHaveText(/^14/);
   await page.getByRole('button', { name: 'Year', exact: true }).click();
   await expect(page.getByRole('img', { name: /^year action chart/ })).toBeVisible();
-  for (const [button, heading] of [['Profile insights', 'Profile insights'], ['About the project', 'Behind Evergreen'], ['Settings & data', 'Settings & data'], ['Climate Wrapped', 'Climate Wrapped']]) {
+  for (const [button, heading] of [['Profile insights', 'Profile insights'], ['About the project', 'Behind Touch Grass'], ['Settings & data', 'Settings & data'], ['Climate Wrapped', 'Climate Wrapped']]) {
     await page.getByRole('button', { name: button, exact: true }).click(); await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   }
   await page.screenshot({ path: 'test-results/wrapped-desktop.png', fullPage: true });

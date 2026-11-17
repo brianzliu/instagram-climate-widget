@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 await mkdir('release', { recursive: true });
 const checksums = [];
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 for (const [target, suffix] of [['chromium', 'zip'], ['firefox', 'xpi']]) {
-  const name = `evergreen-${target}-0.1.0.${suffix}`;
+  const name = `touch-grass-${target}-${version}.${suffix}`;
   const file = resolve('release', name);
   await rm(file, { force: true });
   const result = spawnSync('zip', ['-qr', file, '.'], { cwd: resolve('dist', target), stdio: 'inherit' });

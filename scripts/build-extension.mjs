@@ -11,6 +11,7 @@ for (const target of ['chromium', 'firefox']) {
   const manifest = structuredClone(base);
   if (target === 'firefox') {
     manifest.background = { scripts: ['background.js'] };
+    // Retain the installed add-on identity and its existing local journal data.
     manifest.browser_specific_settings = { gecko: { id: 'evergreen-climate@local.example', strict_min_version: '140.0', data_collection_permissions: { required: ['websiteContent'] } } };
   }
   await writeFile(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
