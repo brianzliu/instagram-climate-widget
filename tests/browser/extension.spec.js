@@ -12,6 +12,7 @@ test('real Chromium extension loads its service worker, popup, and private dashb
   try {
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     const extensionId = new URL(worker.url()).host;
+    expect(await worker.evaluate(() => chrome.runtime.getManifest().name)).toBe('Touch Grass');
     const page = await context.newPage(); const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(`chrome-extension://${extensionId}/popup.html`);
     await expect(page.getByRole('button', { name: 'Open my journal' })).toBeVisible();

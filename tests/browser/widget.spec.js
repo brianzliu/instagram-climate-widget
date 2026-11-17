@@ -31,7 +31,7 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   expect(await page.evaluate(()=>sentPosts.every(p=>p.caption==='A vegan lunch.'&&p.images[0].startsWith('data:image/jpeg;base64,')))).toBe(true);
   await widget.getByRole('button',{name:'View evidence & collection notes'}).click();
   await expect(widget.getByText('Caption:',{exact:false}).first()).toBeVisible();
-  await expect(widget.getByRole('button',{name:'Saved to your private journal'})).toBeVisible();
+  await expect(widget.getByText('Saved to journal', { exact: false })).toBeVisible();
   expect(await page.evaluate(()=>saved.length)).toBe(1);
   expect(await page.evaluate(()=>saved[0].posts.every(p=>p.publishedAt==='2024-02-29T18:00:00Z'))).toBe(true);
   expect(await page.evaluate(()=>saved[0].posts.every(p=>!p.images))).toBe(true);
@@ -52,7 +52,7 @@ test('partial model findings stay visible with explicit coverage and unanalysed 
   await page.evaluate(saved=>{window.chrome={runtime:{sendMessage:async()=>({ok:true})},storage:{local:{get:async()=>({'evergreen:personal:v1':{observations:[saved]}})}}};},saved);
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
   const widget=page.locator('evergreen-profile-widget');
-  await expect(widget.getByRole('status')).toContainText('Model findings: 1 of 10 posts');
+  await expect(widget.getByRole('status').filter({ hasText: 'Model findings' })).toContainText('Model findings: 1 of 10 posts');
   await expect(widget.locator('.stat strong')).toHaveText(['0','1','0']);
   await widget.getByRole('button',{name:'View evidence & collection notes'}).click();
   await expect(widget.getByText('The model did not return a finding for this post.').first()).toBeVisible();

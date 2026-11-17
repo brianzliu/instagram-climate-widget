@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 test('journal actions persist and remain separate from the demo', async ({ page }) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto('http://127.0.0.1:5173');
+  await expect(page).toHaveTitle('Touch Grass · Your climate journal');
   await expect(page.getByRole('heading', { name: 'Your overview', exact: true })).toBeVisible();
   await expect(page.getByText("You're exploring a sample journal.", { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Start my journal' }).click();

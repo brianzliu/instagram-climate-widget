@@ -76,7 +76,7 @@ async function handle(message, sender) {
     const journal = result[key] || { version: 1, actions: [], observations: [], responses: [] };
     await api.storage.local.set({ [key]: mergeProfileIntoJournal(journal, profile) }); return { ok: true };
   }
-  throw new Error('Unknown Evergreen request.');
+  throw new Error('Unknown Touch Grass request.');
 }
 
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
