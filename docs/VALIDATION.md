@@ -1,5 +1,11 @@
 # MVP validation
 
+## Touch Grass 0.4
+
+The browser suite covers private photo attachments, completing a private change plan, and receiving credit in Climate Wrapped. A hosted test runs the built web app against a local community server and uses two independent browser sessions to publish a photo, like an action, and leave a comment. Integration tests check that retries do not duplicate reactions or comments, and that participants can remove only their own content or comments on their own posts.
+
+The community board uses the existing hosted service and persistent storage. The release has no public deployment.
+
 ## Touch Grass 0.3
 
 Validated November 19, 2026.
