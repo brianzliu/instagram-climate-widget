@@ -1,5 +1,7 @@
 import { readPostPage } from './collector.js';
 import { MAX_PHOTOS_PER_POST } from '../src/analysis-limits.js';
+import { blankJournal, demoJournal } from '../src/domain.js';
+import { editJournal } from '../src/journal-mutations.js';
 import { mergeProfileIntoJournal } from '../src/journal-observations.js';
 const api = globalThis.browser || chrome;
 const API_URL = 'http://127.0.0.1:8787';
@@ -7,6 +9,21 @@ const captures = new Map();
 const POST_URL = /^https:\/\/www\.instagram\.com\/(p|reel)\/[A-Za-z0-9_-]+\/$/;
 const isExtension = sender => sender.url?.startsWith(api.runtime.getURL(''));
 const isInstagram = sender => { try { return ['www.instagram.com', 'instagram.com'].includes(new URL(sender.url).hostname); } catch { return false; } };
+
+const journalWrites = new Map();
+async function updateJournal(mode, update) {
+  const key = `evergreen:${mode}:v1`;
+  const pending = (journalWrites.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+    const stored = await api.storage.local.get(key);
+    const original = stored[key] || (mode === 'demo' ? demoJournal() : blankJournal());
+    const journal = update(original);
+    if (journal !== original) await api.storage.local.set({ [key]: journal });
+    return { journal };
+  });
+  journalWrites.set(key, pending);
+  try { return await pending; }
+  finally { if (journalWrites.get(key) === pending) journalWrites.delete(key); }
+}
 
 async function request(path, options) {
   let response;
@@ -59,6 +76,21 @@ async function fetchImage(url) {
 
 async function handle(message, sender) {
   if (!isInstagram(sender) && !isExtension(sender)) throw new Error('Unsupported sender.');
+  if (message.type === 'COMMUNITY_LIST' && isExtension(sender)) {
+    const query = message.after ? `?after=${encodeURIComponent(message.after)}` : '';
+    return request(`/community${query}`);
+  }
+  if (['COMMUNITY_PROFILE', 'SHARE_POSTS', 'UNSHARE_PROFILE'].includes(message.type)) {
+    const username = String(message.username || '').toLowerCase();
+    if (!/^[a-z0-9_.]{1,30}$/.test(username)) throw new Error('Invalid Instagram handle.');
+    const path = `/community/${username}`;
+    if (message.type === 'COMMUNITY_PROFILE') return request(path + (isInstagram(sender) ? '?view=summary' : ''));
+    if (message.type === 'UNSHARE_PROFILE' && isExtension(sender)) return request(path, { method: 'DELETE' });
+    if (message.type === 'SHARE_POSTS' && isInstagram(sender)
+      && new URL(sender.url).pathname.replace(/\/$/, '').toLowerCase() === `/${username}`) {
+      return request(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ posts: message.posts }) });
+    }
+  }
   if (message.type === 'HEALTH') return request('/health');
   if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL('index.html#journal') }).then(() => ({ ok: true }));
   if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id, message.maxPhotos);
@@ -69,12 +101,30 @@ async function handle(message, sender) {
     if (!/^[a-f0-9-]{36}$/.test(message.id)) throw new Error('Invalid analysis identifier.');
     return request(`/jobs/${message.id}`);
   }
+  if (message.type === 'EDIT_JOURNAL' && isExtension(sender) && ['personal', 'demo'].includes(message.mode)) {
+    if (message.mode === 'demo' && message.edit?.type === 'importActions') throw new Error('Import actions into your personal journal.');
+    return updateJournal(message.mode, journal => editJournal(journal, message.edit));
+  }
+  if (message.type === 'VERIFY_VISIBLE_CAPTION' && isInstagram(sender)) {
+    const match = /^\/(?:[\w.]+\/)?(p|reel)\/([\w-]+)\/?$/.exec(new URL(sender.url).pathname);
+    if (!match || typeof message.caption !== 'string' || !message.caption.trim() || message.caption.length > 10000) return { ok: true };
+    const url = `https://www.instagram.com/${match[1]}/${match[2]}/`;
+    await updateJournal('personal', journal => {
+      const needsRefresh = post => post.url === url && post.revision && post.gridRevision && post.caption !== message.caption;
+      const observedPosts = (journal.observedPosts || []).map(post => needsRefresh(post) ? { ...post, gridRevision: null, stale: true } : post);
+      const observations = journal.observations.map(profile => profile.posts?.some(needsRefresh)
+        ? { ...profile, posts: profile.posts.map(post => needsRefresh(post) ? { ...post, gridRevision: null, stale: true } : post) }
+        : profile);
+      if (observedPosts.every((post, i) => post === journal.observedPosts[i]) && observations.every((profile, i) => profile === journal.observations[i])) return journal;
+      return { ...journal, observedPosts, observations };
+    });
+    return { ok: true };
+  }
   if (message.type === 'SAVE_PROFILE' && isInstagram(sender)) {
     const profile = message.profile;
-    if (!profile || !/^[\w.]{1,30}$/.test(profile.username) || !profile.analysis?.categories) throw new Error('Invalid analysis.');
-    const key = 'evergreen:personal:v1'; const result = await api.storage.local.get(key);
-    const journal = result[key] || { version: 1, actions: [], observations: [], responses: [] };
-    await api.storage.local.set({ [key]: mergeProfileIntoJournal(journal, profile) }); return { ok: true };
+    if (!profile || !/^[\w.]{1,30}$/.test(profile.username) || !Array.isArray(profile.analysis?.posts)) throw new Error('Invalid analysis.');
+    await updateJournal('personal', journal => mergeProfileIntoJournal(journal, profile));
+    return { ok: true };
   }
   throw new Error('Unknown Touch Grass request.');
 }

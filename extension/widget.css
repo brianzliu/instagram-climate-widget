@@ -55,3 +55,14 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .collapsed .grass-logo, .collapsed .grass-logo svg { width: 25px; height: 25px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.profile-tooltip { display: none; padding: 12px 14px; margin-top: 5px; background: #f3f9e8; color: #193a28; border: 1px solid #d3e2c7; border-radius: 12px; }
+.collapsed:hover + .profile-tooltip, .collapsed:focus-visible + .profile-tooltip { display: block; }
+.positive-count { color: #276044; font-weight: 700; }
+.share-form fieldset { margin: 0 0 10px; padding: 8px; border: 1px solid #d3e2c7; border-radius: 10px; }
+.share-form textarea { width: 100%; box-sizing: border-box; margin: 7px 0; font: inherit; }
+.share-photos { display: flex; gap: 6px; }
+.share-photos img { max-width: 46%; height: 64px; object-fit: cover; border-radius: 6px; }
+.share-form .primary { margin-top: 8px; }
+.nudge { padding: 8px 10px; border-left: 2px solid #94b772; background: #f2f7ed; }
+.nudge strong { display: block; }

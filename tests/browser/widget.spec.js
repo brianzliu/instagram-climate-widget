@@ -12,20 +12,20 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   await page.route('https://www.instagram.com/**', route => route.fulfill({ contentType:'text/html',body:profileHTML }));
   await page.goto('https://www.instagram.com/sample/');
   await page.evaluate(({image, answer}) => {
-    window.requests=[];window.saved=[];
+    window.requests=[];window.saved=[];window.edited=false;
     window.chrome={runtime:{sendMessage:async data=>{window.requests.push(data.type);
       if(data.type==='HEALTH') return {configured:true,model:'test/vision'};
-      if(data.type==='COLLECT_POST') return {caption:'A vegan lunch.',captionSource:'post heading',publishedAt:'2024-02-29T18:00:00Z',dateSource:'post permalink time',images:[{url:'https://media.cdninstagram.com/photo.jpg'}],warnings:[],isVideo:false};
+      if(data.type==='COLLECT_POST') return {caption:window.edited && data.url.endsWith('/post0/') ? 'Traded leftovers after a hike.' : 'A vegan lunch.',captionSource:'post heading',publishedAt:'2024-02-29T18:00:00Z',dateSource:'post permalink time',images:[{url:'https://media.cdninstagram.com/photo.jpg'}],warnings:[],isVideo:false};
       if(data.type==='FETCH_IMAGE') return {dataUrl:image,originalBytes:100000};
       if(data.type==='START_ANALYSIS'){window.sentPosts=data.posts;return {id:'11111111-1111-4111-8111-111111111111'};}
-      if(data.type==='ANALYSIS_STATUS') return {state:'done',result:{analysis:answer,model:'test/vision'}};
+      if(data.type==='ANALYSIS_STATUS') return {state:'done',result:{analysis:{...answer,posts:answer.posts.slice(0,window.sentPosts.length)},model:'test/vision'}};
       if(data.type==='SAVE_PROFILE'){window.saved.push(data.profile);return {ok:true};}
       return {ok:true};}},storage:{local:{get:async()=>({})}}};
   }, {image:IMAGE,answer:analysis()});
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
   const widget=page.locator('evergreen-profile-widget');
-  await expect(widget.getByRole('button',{name:'Analyze first 10 posts'})).toBeVisible();
-  await widget.getByRole('button',{name:'Analyze first 10 posts'}).click();
+  await expect(widget.getByRole('button',{name:'Scan up to 10 posts'})).toBeVisible();
+  await widget.getByRole('button',{name:'Scan up to 10 posts'}).click();
   await expect(widget.getByText('10/10 posts read', {exact:false})).toBeVisible();
   expect(await page.evaluate(()=>requests.filter(r=>r==='COLLECT_POST').length)).toBe(10);
   expect(await page.evaluate(()=>sentPosts.every(p=>p.caption==='A vegan lunch.'&&p.images[0].startsWith('data:image/jpeg;base64,')))).toBe(true);
@@ -35,6 +35,13 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   expect(await page.evaluate(()=>saved.length)).toBe(1);
   expect(await page.evaluate(()=>saved[0].posts.every(p=>p.publishedAt==='2024-02-29T18:00:00Z'))).toBe(true);
   expect(await page.evaluate(()=>saved[0].posts.every(p=>!p.images))).toBe(true);
+  await expect(page.locator('touch-grass-scanned')).toHaveCount(10);
+  await page.evaluate(() => { document.querySelector('a[href="/p/post0/"] img').alt = 'Updated caption'; window.edited = true; });
+  await expect(page.locator('touch-grass-scanned')).toHaveCount(9);
+  await widget.getByRole('button', { name: 'Scan for changes' }).click();
+  await expect(widget.getByText('9 reused', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => sentPosts.map(post => post.caption))).toEqual(['Traded leftovers after a hike.']);
+  await expect(page.locator('touch-grass-scanned')).toHaveCount(10);
   await page.screenshot({path:'test-results/profile-widget.png',fullPage:true});
   await page.evaluate(()=>{history.pushState({},'', '/anotherprofile/'); document.querySelector('header h2').textContent='anotherprofile';});
   await expect(widget.getByRole('heading', { name: '@anotherprofile', exact: true })).toBeVisible();
@@ -53,7 +60,7 @@ test('partial model findings stay visible with explicit coverage and unanalysed 
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
   const widget=page.locator('evergreen-profile-widget');
   await expect(widget.getByRole('status').filter({ hasText: 'Model findings' })).toContainText('Model findings: 1 of 10 posts');
-  await expect(widget.locator('.stat strong')).toHaveText(['0','1','0']);
+  await expect(widget.getByText('1 positive action spotted')).toBeVisible();
   await widget.getByRole('button',{name:'View evidence & collection notes'}).click();
   await expect(widget.getByText('The model did not return a finding for this post.').first()).toBeVisible();
   await expect(widget.getByText('Caption: Caption 2',{exact:true})).toBeVisible();
@@ -73,7 +80,7 @@ test('unconfigured OpenRouter shows a setup error without collecting posts', asy
   await page.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:profileHTML}));await page.goto('https://www.instagram.com/sample/');
   await page.evaluate(()=>{window.requests=[];window.chrome={runtime:{sendMessage:async data=>{requests.push(data.type);return {configured:false};}},storage:{local:{get:async()=>({})}}};});
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});const widget=page.locator('evergreen-profile-widget');
-  await widget.getByRole('button',{name:'Analyze first 10 posts'}).click();await expect(widget.getByRole('alert')).toContainText('OPENROUTER_API_KEY');
+  await widget.getByRole('button',{name:'Scan up to 10 posts'}).click();await expect(widget.getByRole('alert')).toContainText('OPENROUTER_API_KEY');
   expect(await page.evaluate(()=>requests.includes('COLLECT_POST'))).toBe(false);
 });
 
@@ -104,7 +111,7 @@ test('eight-photo carousel responses yield at most 20 uploads and retain all ten
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
   const widget=page.locator('evergreen-profile-widget');
   await expect(widget.getByText('Max 20 photos total', {exact:false})).toBeVisible();
-  await widget.getByRole('button',{name:'Analyze first 10 posts'}).click();
+  await widget.getByRole('button',{name:'Scan up to 10 posts'}).click();
   await expect(widget.getByText('20 photos · 10 captions',{exact:false})).toBeVisible();
   expect(await page.evaluate(()=>downloads)).toBe(20);
   expect(await page.evaluate(()=>sentPosts.map(p=>p.images.length))).toEqual(Array(10).fill(2));
@@ -121,4 +128,73 @@ test('collector stops advancing an eight-slide carousel after two photos', async
   expect(result.images).toHaveLength(2); expect(await page.evaluate(()=>slide)).toBe(1);
   expect(result.caption).toBe('Full caption stays available.'); expect(result.warnings.some(w=>w.includes('Photo limit'))).toBe(true);
   expect(result.publishedAt).toBeNull();expect(result.publishedDate).toBeNull();
+});
+
+test('shared tooltip and matching post revisions work without a model or photo downloads', async ({ page }) => {
+  await page.route('https://www.instagram.com/**', route => route.fulfill({ contentType: 'text/html', body: profileHTML }));
+  await page.goto('https://www.instagram.com/sample/');
+  await page.evaluate(async () => {
+    const caption = 'I volunteered at the park.';
+    const photo = 'https://media.cdninstagram.com/park.jpg';
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([caption, ['/park.jpg'], false, null])));
+    const revision = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
+    const posts = Array.from({ length: 10 }, (_, i) => ({
+      revision, action: 'Joined a park cleanup.', url: `https://www.instagram.com/p/post${i}/`,
+    }));
+    window.sharedRequests = [];
+    window.chrome = {
+      runtime: { sendMessage: async data => {
+        sharedRequests.push(data.type);
+        if (data.type === 'HEALTH') return { configured: false, community: true };
+        if (data.type === 'COMMUNITY_PROFILE') return { profile: { posts } };
+        if (data.type === 'COLLECT_POST') return { caption, captionSource: 'post heading', images: [{ url: photo }], warnings: [], isVideo: false };
+        return { ok: true };
+      } },
+      storage: { local: { get: async () => ({}) } },
+    };
+  });
+  await page.addScriptTag({ content: await readFile('dist/chromium/content.js', 'utf8') });
+  const widget = page.locator('evergreen-profile-widget');
+  const open = widget.getByRole('button', { name: 'Open Touch Grass' });
+  await open.hover();
+  await expect(widget.getByRole('tooltip')).toHaveText('10 shared actions. Joined a park cleanup.');
+  await open.click();
+  await widget.getByRole('button', { name: 'Scan up to 10 posts' }).click();
+  await expect(widget.getByText('10 reused', { exact: false })).toBeVisible();
+  await expect(page.locator('touch-grass-scanned')).toHaveCount(10);
+  expect(await page.evaluate(() => sharedRequests.filter(type => ['START_ANALYSIS', 'FETCH_IMAGE', 'SHARE_POSTS'].includes(type)))).toEqual([]);
+});
+
+test('publishing uploads only photos and actions explicitly selected after review', async ({ page }) => {
+  await page.route('https://www.instagram.com/**', route => route.fulfill({ contentType: 'text/html', body: profileHTML }));
+  await page.goto('https://www.instagram.com/sample/');
+  await page.evaluate(({ image, answer }) => {
+    window.published = [];
+    window.chrome = {
+      runtime: { sendMessage: async data => {
+        if (data.type === 'HEALTH') return { configured: true, community: true, publisher: 'sample' };
+        if (data.type === 'COMMUNITY_PROFILE') return { profile: null };
+        if (data.type === 'COLLECT_POST') return { caption: 'Caption stays private.', captionSource: 'post heading', images: [{ url: 'https://media.cdninstagram.com/photo.jpg' }], warnings: [], isVideo: false };
+        if (data.type === 'FETCH_IMAGE') return { dataUrl: image, originalBytes: 100 };
+        if (data.type === 'ANALYSIS_STATUS') return { state: 'done', result: { analysis: answer } };
+        if (data.type === 'SHARE_POSTS') published.push(data);
+        return { ok: true };
+      } },
+      storage: { local: { get: async () => ({}) } },
+    };
+  }, { image: IMAGE, answer: analysis() });
+  await page.addScriptTag({ content: await readFile('dist/chromium/content.js', 'utf8') });
+  const widget = page.locator('evergreen-profile-widget');
+  await widget.getByRole('button', { name: 'Scan up to 10 posts' }).click();
+  await widget.getByRole('button', { name: 'Review & share photos' }).click();
+  expect(await page.evaluate(() => published)).toEqual([]);
+  await widget.getByRole('checkbox', { name: 'Include this post' }).first().check();
+  await widget.getByLabel('Action for post 1', { exact: true }).fill('Packed a vegan lunch.');
+  await widget.getByRole('button', { name: 'Publish selected posts' }).click();
+  await expect(widget.getByText('Selected posts shared.')).toBeVisible();
+  const [{ posts }] = await page.evaluate(() => published);
+  expect(posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({ id: 'post0', action: 'Packed a vegan lunch.' });
+  expect(posts[0].images[0]).toMatch(/^data:image\/jpeg;base64,/);
+  expect(posts[0]).not.toHaveProperty('caption');
 });

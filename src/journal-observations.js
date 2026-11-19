@@ -17,6 +17,7 @@ function entriesForProfile(profile) {
     if (!match) return null;
     return {
       id: `instagram:${match[1]}`, username: profile.username, url: post.url,
+      revision: post.revision || null, gridRevision: post.gridRevision || null,
       caption: post.caption || '', photoCount: post.photoCount || 0,
       publishedAt: typeof post.publishedAt === 'string' && !Number.isNaN(Date.parse(post.publishedAt)) ? post.publishedAt : null,
       publishedDate: validDay(post.publishedDate) ? post.publishedDate : null,
