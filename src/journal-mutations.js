@@ -1,4 +1,5 @@
 import { blankJournal, dateKey } from './domain.js';
+import { isCompressedPhoto, photoLimit } from './action-photos.js';
 
 export function editJournal(journal, edit) {
   if (edit.type === 'clear') return blankJournal();
@@ -9,7 +10,22 @@ export function editJournal(journal, edit) {
       observedPosts: (journal.observedPosts || []).filter(post => post.username !== edit.username),
     };
   }
-  if (edit.type === 'removeAction') return { ...journal, actions: journal.actions.filter(action => action.id !== edit.id) };
+  const steps = journal.nextSteps || [];
+  if (edit.type === 'addStep') {
+    if (steps.length >= 100) throw new Error('Remove an old plan to add another.');
+    return { ...journal, nextSteps: [...steps, edit.step] };
+  }
+  if (edit.type === 'removeStep') return { ...journal, nextSteps: steps.filter(step => step.id !== edit.id) };
+  if (edit.type === 'completeStep') {
+    const step = steps.find(item => item.id === edit.id);
+    if (!step || step.actionId) throw new Error('This plan has already been completed or removed.');
+    return { ...journal, actions: [...journal.actions, edit.action],
+      nextSteps: steps.map(item => item === step ? { ...item, actionId: edit.action.id } : item) };
+  }
+  if (edit.type === 'removeAction') {
+    return { ...journal, actions: journal.actions.filter(action => action.id !== edit.id),
+      nextSteps: steps.map(step => step.actionId === edit.id ? { id: step.id, title: step.title } : step) };
+  }
   if (edit.type === 'addAction') {
     const action = edit.action;
     if (action.sourcePostId && journal.actions.some(saved => saved.sourcePostId === action.sourcePostId)) {
@@ -34,7 +50,9 @@ export function editJournal(journal, edit) {
       if (sourcePostId) posts.add(sourcePostId);
       return [{ id: action.id, title: action.title.trim().slice(0, 600), date: action.date,
         note: typeof action.note === 'string' ? action.note.slice(0, 600) : '',
-        source: action.source === 'instagram' ? 'instagram' : 'manual', ...(sourcePostId ? { sourcePostId } : {}) }];
+        source: ['instagram', 'next-step'].includes(action.source) ? action.source : 'manual',
+        ...(sourcePostId ? { sourcePostId } : {}),
+        ...(Array.isArray(action.photos) ? { photos: action.photos.slice(0, photoLimit).filter(isCompressedPhoto) } : {}) }];
     });
     return { ...journal, actions: [...journal.actions, ...actions] };
   }

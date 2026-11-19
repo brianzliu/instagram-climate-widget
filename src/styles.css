@@ -308,19 +308,54 @@ main { padding-bottom: 42px; }
 .recap-highlights ul { margin-bottom: 0; padding-left: 20px; line-height: 1.8; }
 .community-search { display: flex; gap: 8px; align-items: stretch; margin-bottom: 12px; }
 .community-search input { width: auto; min-width: 0; flex: 1; margin: 0; }
-.community-names { display: flex; flex-wrap: wrap; gap: 8px; }
-.community-names [aria-pressed="true"] { background: #d9f5a9; }
-.community-profile { margin-top: 22px; }
-.community-posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 14px; margin-top: 16px; }
-.community-posts article { min-width: 0; border-top: 1px solid var(--line); }
-.community-posts img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
-.community-posts article div { padding: 8px 0 14px; overflow-wrap: anywhere; }
-.community-posts time { display: block; color: var(--muted); font-size: 12px; }
-.community-posts a:last-child { display: inline-flex; gap: 5px; align-items: center; text-decoration: underline; margin-top: 6px; }
 .profile-intro a { margin-top: 14px; }
 .saved-profile + .saved-profile { border-top: 1px solid var(--line); }
 .settings-row input[type="file"] { min-width: 0; max-width: 100%; }
-.community-posts .community-photos { display: flex; gap: 4px; padding: 0; }
-.community-photos img { flex: 1; min-width: 0; }
 .wrapped-poster h2 em { color: #52743f; }
 .wrapped-poster p, .wrapped-poster .eyebrow, .wrapped-number span { color: #48623d; }
+
+.action-photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+.action-photos img { display: block; width: 100%; border-radius: 12px; object-fit: contain; background: #ebefe4; }
+.journal-photos { display: flex; flex-wrap: wrap; margin-top: 10px; }
+.journal-photos img { width: 88px; max-width: 100%; height: 66px; object-fit: cover; }
+.photo-picker { margin: 12px 0; }
+.photo-picker input { width: 100%; min-width: 0; }
+.photo-previews { display: flex; flex-wrap: wrap; gap: 10px; }
+.photo-previews figure { margin: 0; }
+.photo-previews img { display: block; width: 100px; height: 75px; object-fit: cover; border-radius: 8px; }
+.photo-previews button { margin-top: 5px; }
+.community .board-heading { align-items: flex-start; gap: 12px; }
+.board-heading .inline-actions { margin: 0; flex-wrap: wrap; }
+.community-panel { max-width: 480px; margin-bottom: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #f0f5e9; }
+.community-panel label { display: block; margin: 12px 0; }
+.community-panel > p { margin-top: 8px; }
+.community-board { max-width: 720px; }
+.board-post { padding: 22px 0; border-bottom: 1px solid var(--line); }
+.board-post:first-child { border-top: 1px solid var(--line); }
+.board-byline, .board-controls, .board-source, .board-thread summary, .steps-milestone { display: flex; align-items: center; gap: 9px; }
+.board-byline time { color: #596b55; font-size: .82rem; }
+.board-action { margin: 8px 0 12px; font-size: 1.08rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.board-photos img { max-height: 435px; }
+.board-source { width: fit-content; margin: 9px 0; text-decoration: underline; }
+.board-controls { gap: 14px; margin: 12px 0 4px; }
+.board-like { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; min-width: 50px; padding: 6px 10px; border-radius: 9px; background: #ecf1e5; transition: background .15s, color .15s; }
+.board-like:hover, .board-like[aria-pressed="true"] { background: #d9efbd; color: #285739; }
+.board-thread summary { width: fit-content; padding: 6px 0; cursor: pointer; }
+.board-thread ul, .steps-list { list-style: none; margin: 0; padding: 0; }
+.board-thread li, .steps-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 9px 0; }
+.board-thread li p { overflow-wrap: anywhere; }
+.board-thread .text-button { flex-shrink: 0; }
+.board-reply { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.board-reply input { width: auto; min-width: 125px; flex: 1; margin: 0; }
+.community-board + .button { margin-top: 14px; }
+.steps-milestone, .plan-idea { padding: 9px 13px; background: #eaf4db; border-radius: 10px; color: #365537; }
+.steps-list li { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.steps-list li p { display: flex; align-items: center; gap: 5px; }
+.steps-list .inline-actions { margin: 0; flex-wrap: wrap; }
+
+@media (max-width: 670px) {
+  .community .board-heading, .next-steps .section-heading { flex-wrap: wrap; }
+  .community-search { flex-wrap: wrap; }
+  .community-search input { flex-basis: 100%; }
+  .journal-view-tabs { flex-wrap: wrap; }
+}

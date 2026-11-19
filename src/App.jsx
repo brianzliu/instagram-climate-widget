@@ -4,6 +4,8 @@ import { ACTIONS, chartBuckets, createAction, dateKey, inRange, periodRange, sta
 import { downloadFile, extensionAPI, JOURNAL_KEYS, loadJournal, changeJournal } from './storage.js';
 import { journalObservations } from './journal-observations.js';
 import { Community, unshareProfile } from './Community.jsx';
+import { ActionPhotos, PhotoPicker } from './PhotoPicker.jsx';
+import { NextSteps, PlanForm } from './NextSteps.jsx';
 
 const nav = [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'timeline', label: 'Journal', icon: List }, { id: 'wrapped', label: 'Climate Wrapped', icon: Sparkles }, { id: 'profiles', label: 'Community', icon: Users }];
 const titles = {
@@ -44,36 +46,41 @@ function Modal({ title, children, onClose }) {
   return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref}><div className="modal-head"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></div>{children}</section></div>;
 }
 
-function ActionForm({ onSave, onClose, post }) {
-  const [kind, setKind] = useState(post ? 'custom' : 'bus');
+function ActionForm({ onSave, onClose, post, plan, allowPhotos = false }) {
+  const [kind, setKind] = useState(post || plan ? 'custom' : 'bus');
   const [title, setTitle] = useState(post?.finding?.observation.slice(0, 600) || '');
   const [date, setDate] = useState(post?.date || (post ? '' : dateKey()));
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [preparing, setPreparing] = useState(false);
   return <form onSubmit={async e => {
     e.preventDefault();
+    if (preparing) return;
     setSaving(true);
     try {
-      await onSave(createAction({ kind, title, date, note, source: post ? 'instagram' : 'manual', sourcePostId: post?.id }));
+      const action = createAction({ kind, title, date, note, source: post ? 'instagram' : plan ? 'next-step' : 'manual', sourcePostId: post?.id });
+      await onSave(photos.length ? { ...action, photos } : action);
       onClose();
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
   }}>
     {post ? <p>Review the suggested description and date. Save it only if you took this action.</p>
-      : <label>What did you do?<select value={kind} onChange={e => setKind(e.target.value)}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}<option value="custom">Write my own</option></select></label>}
+      : plan ? <p>What did you do when you tried this change?</p> : <label>What did you do?<select value={kind} onChange={e => setKind(e.target.value)}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}<option value="custom">Write my own</option></select></label>}
     {kind === 'custom' && <label>Action<input required maxLength={600} value={title} onChange={e => setTitle(e.target.value)} /></label>}
     <label>When?<input type="date" required max={dateKey()} value={date} onChange={e => setDate(e.target.value)} /></label>
     {!post && <label>Notes <span className="muted">optional</span><textarea maxLength={600} rows={3} value={note} placeholder="What made this possible?" onChange={e => setNote(e.target.value)} /></label>}
+    {allowPhotos && !post && <PhotoPicker images={photos} onChange={setPhotos} onBusy={setPreparing} />}
     {error && <p role="alert" className="error">{error}</p>}
-    <button disabled={saving} className="button primary full">{saving ? 'Saving…' : post ? 'Confirm and save' : 'Save action'}<Check size={16} /></button>
+    <button disabled={saving || preparing} className="button primary full">{saving ? 'Saving…' : post ? 'Confirm and save' : 'Save action'}<Check size={16} /></button>
   </form>;
 }
 
 function ActivityList({ actions, onDelete, limit }) {
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date));
   if (!sorted.length) return <div className="empty"><Sprout size={32} /><h3>Your journal has room to grow.</h3><p>Log an action to start seeing your habits over time.</p></div>;
-  return <div className="activity-list">{sorted.slice(0, limit).map(a => <div className="activity" key={a.id}><span className="category-icon transport"><Sprout size={19} /></span><div className="activity-main"><strong>{a.title}</strong>{a.note && <p>{a.note}</p>}</div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : 'Self-reported'}</small></div><button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>)}</div>;
+  return <div className="activity-list">{sorted.slice(0, limit).map(a => <div className="activity" key={a.id}><span className="category-icon transport"><Sprout size={19} /></span><div className="activity-main"><strong>{a.title}</strong>{a.note && <p>{a.note}</p>}<ActionPhotos images={a.photos} label="Journal photo" className="journal-photos" /></div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : a.source === 'next-step' ? 'Change tried' : 'Self-reported'}</small></div><button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>)}</div>;
 }
 
 function TrendChart({ actions, anchor, period }) {
@@ -81,7 +88,7 @@ function TrendChart({ actions, anchor, period }) {
   return <div className="chart-wrap"><div className="chart-axis"><span>{max}</span><span>{max / 2}</span><span>0</span></div><div className="chart" role="img" aria-label={`${period} action chart. ${buckets.map(b => `${b.label}: ${b.total}`).join(', ')}`}><div className="chart-grid"><i /><i /><i /></div><div className="chart-bars">{buckets.map((b, i) => <div className="bar-column" key={i}><div className="bar-track" title={`${b.label}: ${b.total} actions`}><div className="stack" style={{ height: `${b.total / max * 100}%`, animationDelay: `${i * 15}ms` }}>{b.total > 0 && <span className="action-bar" />}</div></div><span className="bar-label">{period !== 'month' || i === 0 || (i + 1) % 5 === 0 ? b.label : ''}</span></div>)}</div></div></div>;
 }
 
-function ObservationList({ posts, reviewed, onReview }) {
+function ObservationList({ posts, reviewed, onReview, onPlan }) {
   if (!posts.length) return <div className="empty"><Users size={32} /><h3>No Instagram observations here yet.</h3><p>Completed profile analyses are logged automatically. Try a different date or scan a profile.</p></div>;
   return <div className="observation-list">{posts.map(post => {
     return <article className="observation-entry" key={post.id}>
@@ -90,6 +97,7 @@ function ObservationList({ posts, reviewed, onReview }) {
       {post.finding?.signal === 'supportive' && !post.stale && !post.finding.fromCommunity && (reviewed.has(post.id)
         ? <p className="muted">Saved to your actions</p>
         : <button className="text-button" onClick={() => onReview(post)}>Review for my journal <ArrowRight size={14} /></button>)}
+      {onPlan && !post.stale && post.finding?.signal === 'higherImpact' && <button className="text-button" onClick={() => onPlan(post.finding.observation)}>Plan an alternative <ArrowRight size={14} /></button>}
       <details><summary>Caption & evidence</summary><p className="observation-caption">{post.caption || 'Caption unavailable.'}</p><p>{post.finding?.evidence || 'No evidence returned.'}</p><p className="muted">{post.finding ? `${post.finding.confidence} model confidence · ${post.finding.signal}` : 'Unanalysed'} · Date source: {post.dateSource}</p></details>
       <div className="observation-footer"><span>Analysed {post.analyzedAt ? new Date(post.analyzedAt).toLocaleDateString() : 'at an unknown time'}</span><a href={post.url} target="_blank" rel="noreferrer">Original post<ExternalLink size={12} /></a></div>
     </article>;
@@ -100,6 +108,9 @@ export default function App() {
   const [page, setPage] = useState('overview'); const [mode, setMode] = useState(extensionAPI ? 'personal' : 'demo'); const [journal, setJournal] = useState(null); const [anchor, setAnchor] = useState(new Date()); const [period, setPeriod] = useState('month'); const [modal, setModal] = useState(null); const [toast, setToast] = useState(''); const [error, setError] = useState(''); const [query, setQuery] = useState(''); const [health, setHealth] = useState(null);
   const toastTimer = useRef();
   const [reviewPost, setReviewPost] = useState(null);
+  const [planIdea, setPlanIdea] = useState('');
+  const [communityAccount, setCommunityAccount] = useState();
+  const [completeStep, setCompleteStep] = useState(null);
   const [journalView, setJournalView] = useState('actions'); const [observedPeriod, setObservedPeriod] = useState('all');
   useEffect(() => { let canceled = false; setJournal(null); loadJournal(mode).then(data => { if (!canceled) setJournal(data); }).catch(e => setError(e.message)); return () => { canceled = true; }; }, [mode]);
   useEffect(() => {
@@ -108,12 +119,22 @@ export default function App() {
     extensionAPI?.storage.onChanged.addListener(changed); window.addEventListener('storage', webChanged);
     return () => { extensionAPI?.storage.onChanged.removeListener(changed); window.removeEventListener('storage', webChanged); };
   }, [mode]);
-  useEffect(() => { if (location.hash === '#profiles' || location.hash === '#community') setPage('profiles'); if (location.hash === '#settings') setPage('settings'); if (location.hash === '#journal') { setPage('timeline'); setJournalView('instagram'); } }, []);
+  useEffect(() => { if (location.hash === '#profiles' || location.hash === '#community') setPage('profiles'); if (location.hash === '#settings') setPage('settings'); if (location.hash === '#journal') { setPage('timeline'); setJournalView('instagram'); } if (location.hash === '#plans') { setPage('timeline'); setJournalView('plans'); } }, []);
   const notify = message => { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); };
   const applyEdit = async edit => setJournal(await changeJournal(mode, edit));
   const addAction = async action => {
-    await applyEdit({ type: 'addAction', action });
-    notify('Action saved.');
+    try {
+      await applyEdit(completeStep ? { type: 'completeStep', id: completeStep.id, action } : { type: 'addAction', action });
+    } catch (e) {
+      if (action.photos?.length && /quota|exceeded|too large/i.test(e.message)) throw new Error('This browser is low on journal storage. Remove a photo or export and clear old entries.');
+      throw e;
+    }
+    notify(completeStep ? 'Change logged for your next Climate Wrapped.' : 'Action saved.');
+  };
+  const makePlan = idea => { setPlanIdea(idea || ''); setModal('plan'); };
+  const removePlan = async id => {
+    try { await applyEdit({ type: 'removeStep', id }); }
+    catch (e) { setError(e.message); }
   };
   const deleteAction = async id => {
     try { await applyEdit({ type: 'removeAction', id }); notify('Action removed.'); }
@@ -159,6 +180,7 @@ export default function App() {
   const reviewed = new Set(journal?.actions.map(action => action.sourcePostId).filter(Boolean));
   const visibleActions = actions.filter(action => `${action.title} ${action.note}`.toLowerCase().includes(query.toLowerCase()));
   const recapEnded = range.end <= dateKey();
+  const changesTried = actions.filter(action => action.source === 'next-step').length;
   const highlighted = [...actions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
 
   function selectPeriod(nextPeriod) {
@@ -180,6 +202,7 @@ export default function App() {
         <text x="78" y="720" font-size="390" font-weight="bold">${summary.total}</text>
         <text x="94" y="824" font-size="53">${summary.total === 1 ? 'action' : 'actions'} logged</text>
         <text x="95" y="920" font-size="38">${summary.days} active ${summary.days === 1 ? 'day' : 'days'}</text>
+        ${changesTried ? `<text x="95" y="1000" font-size="38">${changesTried} ${changesTried === 1 ? 'change tried' : 'changes tried'}</text>` : ''}
         <text x="95" y="1210" font-size="24">Based on the actions you recorded.</text>
       </g></svg>`;
     downloadFile('touch-grass-wrapped.svg', svg, 'image/svg+xml');
@@ -190,12 +213,12 @@ export default function App() {
     <aside className="sidebar"><a href="#" className="brand" aria-label="Touch Grass home" onClick={e => { e.preventDefault(); changePage('overview'); }}><img className="brand-wordmark" src="./touch-grass-logo.png" alt="Touch Grass" /></a><nav aria-label="Main navigation">{nav.map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} aria-current={page === item.id ? 'page' : undefined} aria-label={item.label} onClick={() => changePage(item.id)}><item.icon size={18} strokeWidth={1.6} />{item.label}</button>)}</nav>
       <div className="sidebar-bottom"><button className={`nav-item ${page === 'research' ? 'active' : ''}`} onClick={() => changePage('research')}><HelpCircle size={18} />About the project</button><button className={`nav-item ${page === 'settings' ? 'active' : ''}`} onClick={() => changePage('settings')}><Settings2 size={18} />Settings & data</button><div className="local-status"><span className="avatar">{mode === 'demo' ? 'D' : 'Y'}</span><div><strong>{mode === 'demo' ? 'Demo journal' : 'Your private journal'}</strong><span><span className="status-dot" />Stored on this device</span></div></div></div>
     </aside>
-    <div className="main-shell"><header className="topbar"><div className="topbar-right"><span className="privacy-label"><LockKeyhole size={13} />Saved on this device</span><button className="mode-toggle" onClick={() => setMode(mode === 'demo' ? 'personal' : 'demo')}>{mode === 'demo' ? 'Demo mode' : 'Personal mode'}<span className={mode === 'demo' ? 'toggle on' : 'toggle'} /></button></div></header>
+    <div className="main-shell"><header className="topbar"><div className="topbar-right">{page !== 'profiles' && <><span className="privacy-label"><LockKeyhole size={13} />Saved on this device</span><button className="mode-toggle" onClick={() => { if (mode === 'personal' && journalView === 'plans') setJournalView('actions'); setMode(mode === 'demo' ? 'personal' : 'demo'); }}>{mode === 'demo' ? 'Demo mode' : 'Personal mode'}<span className={mode === 'demo' ? 'toggle on' : 'toggle'} /></button></>}</div></header>
       <main><div className="page-heading"><div><h1>{titles[page]}</h1></div>{['overview', 'timeline'].includes(page) && <button className="button primary" onClick={() => setModal('action')} disabled={!journal}><Plus size={16} />Log an action</button>}</div>
         {mode === 'demo' && page !== 'profiles' && <div className="demo-banner"><span><span className="demo-tag">DEMO</span>You're exploring a sample journal. These actions are fictional.</span><button onClick={() => setMode('personal')}>Start my journal<ArrowRight size={14} /></button></div>}
         {error && <div className="error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16} /></button></div>}
         {!journal ? <div className="loading"><LoaderCircle className="spin" />Loading your journal…</div> : <div className="page-content" key={page}>
-          {['overview', 'timeline', 'wrapped'].includes(page) && (page !== 'timeline' || journalView === 'actions' || observedPeriod === 'period') && <div className="period-toolbar"><div className="date-controls"><button className="icon-button" aria-label="Previous period" onClick={() => moveDate(-1)}><ChevronLeft size={16} /></button><span><CalendarDays size={15} />{dateLabel}</span><button className="icon-button" aria-label="Next period" disabled={page === 'wrapped' && range.start >= periodRange(new Date(), period).start} onClick={() => moveDate(1)}><ChevronRight size={16} /></button><button className="text-button today" onClick={() => setAnchor(new Date())}>Today</button></div><div className="segmented" aria-label="Time period">{(page === 'wrapped' ? ['day', 'week', 'month'] : ['week', 'month', 'year']).map(p => <button aria-pressed={period === p} className={period === p ? 'selected' : ''} key={p} onClick={() => selectPeriod(p)}>{p[0].toUpperCase() + p.slice(1)}</button>)}</div></div>}
+          {['overview', 'timeline', 'wrapped'].includes(page) && (page !== 'timeline' || journalView === 'actions' || (journalView === 'instagram' && observedPeriod === 'period')) && <div className="period-toolbar"><div className="date-controls"><button className="icon-button" aria-label="Previous period" onClick={() => moveDate(-1)}><ChevronLeft size={16} /></button><span><CalendarDays size={15} />{dateLabel}</span><button className="icon-button" aria-label="Next period" disabled={page === 'wrapped' && range.start >= periodRange(new Date(), period).start} onClick={() => moveDate(1)}><ChevronRight size={16} /></button><button className="text-button today" onClick={() => setAnchor(new Date())}>Today</button></div><div className="segmented" aria-label="Time period">{(page === 'wrapped' ? ['day', 'week', 'month'] : ['week', 'month', 'year']).map(p => <button aria-pressed={period === p} className={period === p ? 'selected' : ''} key={p} onClick={() => selectPeriod(p)}>{p[0].toUpperCase() + p.slice(1)}</button>)}</div></div>}
           {page === 'overview' && <>
 
             <div className="stats-row"><div><span>Actions logged<Sprout size={16} /></span><strong>{summary.total}<small>actions</small></strong></div><div><span>Days active<CalendarDays size={16} /></span><strong>{summary.days}<small>days</small></strong></div></div>
@@ -206,10 +229,13 @@ export default function App() {
             <div className="journal-view-tabs" role="tablist" aria-label="Journal entries">
               <button role="tab" aria-selected={journalView === 'actions'} onClick={() => { setJournalView('actions'); setQuery(''); }}>My actions</button>
               <button role="tab" aria-selected={journalView === 'instagram'} onClick={() => { setJournalView('instagram'); setQuery(''); }}>Instagram observations ({observedPosts.length})</button>
+              {mode === 'personal' && <button role="tab" aria-selected={journalView === 'plans'} onClick={() => setJournalView('plans')}>Changes to try</button>}
             </div>
             {journalView === 'instagram' && <div className="observation-controls"><p>Posts are grouped by their published date. Model findings need your review.</p><select aria-label="Observation dates" value={observedPeriod} onChange={e => setObservedPeriod(e.target.value)}><option value="all">All published dates</option><option value="period">Selected week, month, or year</option><option value="unknown">Published date unknown</option></select></div>}
-            <div className="journal-filters"><input type="search" aria-label={journalView === 'actions' ? 'Search actions' : 'Search Instagram observations'} placeholder="Search your journal…" value={query} onChange={e => setQuery(e.target.value)} /></div>
-            {journalView === 'actions' ? <ActivityList actions={visibleActions} onDelete={deleteAction} /> : <ObservationList posts={visibleObservations} reviewed={reviewed} onReview={setReviewPost} />}
+            {journalView === 'plans'
+              ? mode === 'personal' && <NextSteps steps={journal.nextSteps || []} onPlan={makePlan} onComplete={setCompleteStep} onRemove={removePlan} />
+              : <><div className="journal-filters"><input type="search" aria-label={journalView === 'actions' ? 'Search actions' : 'Search Instagram observations'} placeholder="Search your journal…" value={query} onChange={e => setQuery(e.target.value)} /></div>
+                {journalView === 'actions' ? <ActivityList actions={visibleActions} onDelete={deleteAction} /> : <ObservationList posts={visibleObservations} reviewed={reviewed} onReview={setReviewPost} onPlan={mode === 'personal' ? makePlan : null} />}</>}
           </section>}
           {page === 'wrapped' && (recapEnded && summary.total > 0
             ? <><section className="wrapped-poster"><div>
@@ -217,6 +243,7 @@ export default function App() {
                 <h2>Look at you<br /><em>growing.</em></h2>
                 <div className="wrapped-number">{summary.total}<span>{summary.total === 1 ? 'action' : 'actions'} logged</span></div>
                 <p>{summary.days} active {summary.days === 1 ? 'day' : 'days'}</p>
+                {changesTried > 0 && <p>{changesTried} {changesTried === 1 ? 'change tried' : 'changes tried'}</p>}
               </div><GrassDoodle compact /></section>
               <section className="section recap-highlights"><h2>From your journal</h2><ul>{highlighted.map(action => <li key={action.id}>{action.title}</li>)}</ul></section>
               <div className="recap-footer"><p>Based on the actions you recorded.</p><button className="button secondary" onClick={downloadRecap}><Download size={16} />Save my recap</button></div></>
@@ -225,7 +252,7 @@ export default function App() {
                 <button className="button secondary" onClick={() => setModal('action')}>Log an action</button>
               </section>)}
           {page === 'profiles' && <>
-            <Community />
+            <Community account={communityAccount} setAccount={setCommunityAccount} />
             <section className="profile-intro"><span className="category-icon transport"><Users size={24} /></span><div><h2>Scan an Instagram profile</h2><p>Look for Touch Grass beside the profile photo. Scan the grid, then review the suggestions in your journal.</p><a className="button primary" href="https://www.instagram.com/" target="_blank" rel="noreferrer">Open Instagram<ExternalLink size={15} /></a></div></section>
             {mode === 'personal' && profiles.length > 0 && <section className="section"><h2>Scans saved on this device</h2>{profiles.map(profile => <article className="saved-profile" key={profile.id}><div className="section-heading"><div><h3>@{profile.username}</h3><p>{new Date(profile.analyzedAt).toLocaleDateString()}</p></div><button className="icon-button" aria-label={`Delete analysis for ${profile.username}`} onClick={() => deleteProfile(profile.id)}><Trash2 size={17} /></button></div><p>{profile.analysis.summary}</p></article>)}</section>}
           </>}
@@ -237,8 +264,18 @@ export default function App() {
       </main>
     </div>
     {toast && <div className="toast" role="status"><Check size={17} />{toast}</div>}
-    {modal === 'action' && <Modal title="Log a small win" onClose={() => setModal(null)}><ActionForm onSave={addAction} onClose={() => setModal(null)} /></Modal>}
+    {modal === 'action' && <Modal title="Log a small win" onClose={() => setModal(null)}><ActionForm allowPhotos={mode === 'personal'} onSave={addAction} onClose={() => setModal(null)} /></Modal>}
     {reviewPost && <Modal title="Review and log an action" onClose={() => setReviewPost(null)}><ActionForm post={reviewPost} onSave={addAction} onClose={() => setReviewPost(null)} /></Modal>}
+    {modal === 'plan' && <Modal title="Plan a change" onClose={() => setModal(null)}><PlanForm idea={planIdea} onSave={async step => {
+      await applyEdit({ type: 'addStep', step });
+      setModal(null);
+      setJournalView('plans');
+      changePage('timeline');
+      notify('Plan saved privately.');
+    }} /></Modal>}
+    {completeStep && <Modal title="Log a change you tried" onClose={() => setCompleteStep(null)}>
+      <ActionForm plan={completeStep} allowPhotos onSave={addAction} onClose={() => setCompleteStep(null)} />
+    </Modal>}
     {modal === 'unshare' && <Modal title="Remove all shared posts?" onClose={() => setModal(null)}>
       <p>This removes the community profile and photos. Copies already saved by others may still exist.</p>
       <button className="button danger" disabled={health.removing} onClick={async () => {

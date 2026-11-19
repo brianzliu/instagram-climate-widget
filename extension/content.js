@@ -270,7 +270,7 @@ function showResults(data) {
   const nudge = analysis.posts.find(post => post.signal === 'higherImpact' && !data.posts[post.index - 1]?.stale);
   shell(`<h2>@${escape(data.username)}</h2><p class="result-summary">${escape(analysis.summary)}</p>
     <p class="positive-count">${positive} positive ${positive === 1 ? 'action' : 'actions'} spotted</p>
-    ${nudge ? `<p class="nudge"><strong>One idea to try</strong> ${escape(nudge.observation)}</p>` : ''}
+    ${nudge ? `<p class="nudge"><strong>One idea to try</strong> ${escape(nudge.observation)} <button class="text-link" id="plan">Plan a change privately ↗</button></p>` : ''}
     <div class="coverage">${coverage.postsRead}/${coverage.postsRequested} posts read · ${coverage.photos} photos · ${coverage.captions} captions${coverage.reused ? ` · ${coverage.reused} reused` : ''}</div>
     ${coverage.warnings.length ? `<p class="warnings">${coverage.warnings.length} collection notes. Some content may be missing.</p>` : ''}
     <button class="details-toggle" id="details" aria-expanded="false">View evidence & collection notes ↓</button>
@@ -298,6 +298,7 @@ function showResults(data) {
       const state = document.createElement('span'); state.className = 'saved-state'; state.setAttribute('role', 'status'); state.textContent = '✓ Saved to journal'; e.target.replaceWith(state);
     } catch { e.target.disabled = false; e.target.textContent = 'Save failed. Try again.'; }
   });
+  shadow.getElementById('plan')?.addEventListener('click', () => message({ type: 'OPEN_JOURNAL', view: 'plans' }).catch(showError));
   shadow.getElementById('again')?.addEventListener('click', analyze);
   shadow.getElementById('review-share')?.addEventListener('click', reviewShare);
   positionWidget();

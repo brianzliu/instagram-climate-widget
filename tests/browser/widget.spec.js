@@ -11,9 +11,12 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('https://www.instagram.com/**', route => route.fulfill({ contentType:'text/html',body:profileHTML }));
   await page.goto('https://www.instagram.com/sample/');
+  const answer = analysis();
+  answer.posts[1] = { index: 2, observation: 'Try taking bulky waste to a collection site.', evidence: 'The post describes dumping waste outside.', confidence: 'high', signal: 'higherImpact' };
   await page.evaluate(({image, answer}) => {
     window.requests=[];window.saved=[];window.edited=false;
     window.chrome={runtime:{sendMessage:async data=>{window.requests.push(data.type);
+      if(data.type==='OPEN_JOURNAL') { window.journalView = data.view; return {ok:true}; }
       if(data.type==='HEALTH') return {configured:true,model:'test/vision'};
       if(data.type==='COLLECT_POST') return {caption:window.edited && data.url.endsWith('/post0/') ? 'Traded leftovers after a hike.' : 'A vegan lunch.',captionSource:'post heading',publishedAt:'2024-02-29T18:00:00Z',dateSource:'post permalink time',images:[{url:'https://media.cdninstagram.com/photo.jpg'}],warnings:[],isVideo:false};
       if(data.type==='FETCH_IMAGE') return {dataUrl:image,originalBytes:100000};
@@ -21,12 +24,15 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
       if(data.type==='ANALYSIS_STATUS') return {state:'done',result:{analysis:{...answer,posts:answer.posts.slice(0,window.sentPosts.length)},model:'test/vision'}};
       if(data.type==='SAVE_PROFILE'){window.saved.push(data.profile);return {ok:true};}
       return {ok:true};}},storage:{local:{get:async()=>({})}}};
-  }, {image:IMAGE,answer:analysis()});
+  }, {image:IMAGE,answer});
   await page.addScriptTag({content:await readFile('dist/chromium/content.js','utf8')});
   const widget=page.locator('evergreen-profile-widget');
   await expect(widget.getByRole('button',{name:'Scan up to 10 posts'})).toBeVisible();
   await widget.getByRole('button',{name:'Scan up to 10 posts'}).click();
   await expect(widget.getByText('10/10 posts read', {exact:false})).toBeVisible();
+  await expect(widget.getByText('Try taking bulky waste to a collection site.')).toBeVisible();
+  await widget.getByRole('button', { name: /Plan a change privately/ }).click();
+  expect(await page.evaluate(() => journalView)).toBe('plans');
   expect(await page.evaluate(()=>requests.filter(r=>r==='COLLECT_POST').length)).toBe(10);
   expect(await page.evaluate(()=>sentPosts.every(p=>p.caption==='A vegan lunch.'&&p.images[0].startsWith('data:image/jpeg;base64,')))).toBe(true);
   await widget.getByRole('button',{name:'View evidence & collection notes'}).click();

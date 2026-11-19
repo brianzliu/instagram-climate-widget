@@ -1,4 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createCommunityServer } from '../../server/community.mjs';
+
+const photo = {
+  name: 'park.png',
+  mimeType: 'image/png',
+  buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1sAAAAASUVORK5CYII=', 'base64'),
+};
 
 test('journal actions persist and remain separate from the demo', async ({ page }) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -94,18 +104,78 @@ test('all journal screens render and controls change time periods', async ({ pag
   await page.screenshot({ path: 'test-results/wrapped-desktop.png', fullPage: true });
 });
 
-test('the separate community page shows owner-reviewed photos and actions', async ({ page }) => {
-  await page.route('http://127.0.0.1:8787/community', route => route.fulfill({ json: { profiles: ['outdoors'], next: null } }));
-  await page.route('http://127.0.0.1:8787/community/outdoors', route => route.fulfill({
-    json: { profile: { username: 'outdoors', posts: [{
-      id: 'park', url: 'https://www.instagram.com/p/park/', action: 'Volunteered at a park cleanup.',
-      images: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1sAAAAASUVORK5CYII='],
-    }] } },
-  }));
-  await page.goto('http://127.0.0.1:5173/#community');
-  await expect(page.getByRole('heading', { name: 'Community', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '@outdoors' }).click();
-  await expect(page.getByText('Volunteered at a park cleanup.')).toBeVisible();
-  await expect(page.getByRole('img', { name: 'Shared photo 1 of 1' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Original post' })).toHaveAttribute('href', 'https://www.instagram.com/p/park/');
+test('people can upload a photo, like, and comment on the hosted community board', async ({ page, browser }) => {
+  const directory = await mkdtemp(join(tmpdir(), 'touch-grass-browser-'));
+  const access = 'browser-fixture-community-member-key';
+  const server = createCommunityServer({ directory, tokens: { outdoors: access, neighbor: access } });
+  try {
+    await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
+    const url = `http://127.0.0.1:${server.address().port}/#community`;
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Share an action' }).click();
+    await page.getByLabel('Community handle').fill('outdoors');
+    await page.getByLabel('Access key').fill(access);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).last().click();
+    await page.getByLabel('What did you do?').fill('Volunteered at a park cleanup.');
+    await page.getByLabel(/^Photos/).setInputFiles(photo);
+    await expect(page.getByRole('img', { name: 'Selected photo 1' })).toBeVisible();
+    await page.getByRole('button', { name: 'Publish action' }).click();
+    await expect(page.getByText('Action shared.')).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Shared photo 1 of 1' })).toBeVisible();
+
+    const other = await browser.newPage();
+    try {
+      await other.goto(url);
+      await expect(other.getByText('Volunteered at a park cleanup.')).toBeVisible();
+      await other.getByRole('button', { name: /^Like action/ }).click();
+      await other.getByLabel('Community handle').fill('neighbor');
+      await other.getByLabel('Access key').fill(access);
+      await other.getByRole('button', { name: 'Sign in', exact: true }).last().click();
+      await other.getByRole('button', { name: /^Like action/ }).click();
+      await expect(other.getByRole('button', { name: 'Like action, 1 like' })).toHaveAttribute('aria-pressed', 'true');
+      await other.getByText('0 comments', { exact: true }).click();
+      await other.getByRole('textbox', { name: "Comment on @outdoors's action" }).fill('Thanks for making time for this.');
+      await other.getByRole('button', { name: 'Post comment' }).click();
+      await expect(other.getByText('Thanks for making time for this.')).toBeVisible();
+    } finally { await other.close(); }
+    await page.reload();
+    await page.getByText('1 comment', { exact: true }).click();
+    await expect(page.getByText('Thanks for making time for this.')).toBeVisible();
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('photo journals and completed alternatives stay private and count in the recap', async ({ page }) => {
+  const outbound = [];
+  page.on('request', request => { if (['PUT', 'POST'].includes(request.method())) outbound.push(request.url()); });
+  await page.goto('http://127.0.0.1:5173');
+  await page.getByRole('button', { name: 'Start my journal' }).click();
+  await page.getByRole('button', { name: 'Log an action' }).click();
+  await page.getByRole('dialog').getByLabel(/^Photos/).setInputFiles(photo);
+  await expect(page.getByRole('img', { name: 'Selected photo 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save action' }).click();
+  await expect(page.getByRole('img', { name: 'Journal photo 1 of 1' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Journal', exact: true }).click();
+  await page.getByRole('tab', { name: 'Changes to try' }).click();
+  await page.getByRole('button', { name: 'Make a plan' }).click();
+  await page.getByLabel('What could you do differently next time?').fill('Take old electronics to a drop-off.');
+  await page.getByRole('button', { name: 'Save private plan' }).click();
+  await expect(page.getByText('Take old electronics to a drop-off.')).toBeVisible();
+  await expect(page.getByText('1 change tried')).toHaveCount(0);
+  await page.getByRole('button', { name: 'I tried it' }).click();
+  await page.getByRole('dialog').getByLabel('Action', { exact: true }).fill('Dropped off my old laptop for recycling.');
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const date = [yesterday.getFullYear(), yesterday.getMonth() + 1, yesterday.getDate()].map(value => String(value).padStart(2, '0')).join('-');
+  await page.getByRole('dialog').getByLabel('When?').fill(date);
+  await page.getByRole('button', { name: 'Save action' }).click();
+  await expect(page.getByText('1 change tried')).toBeVisible();
+  await page.getByRole('button', { name: 'Climate Wrapped', exact: true }).click();
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect(page.getByText('Dropped off my old laptop for recycling.')).toBeVisible();
+  await expect(page.getByText('1 change tried')).toBeVisible();
+  expect(outbound).toEqual([]);
 });

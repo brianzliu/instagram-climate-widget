@@ -1,3 +1,4 @@
+import { communityRoute, profileName } from '../src/community-routes.js';
 import { readPostPage } from './collector.js';
 import { MAX_PHOTOS_PER_POST } from '../src/analysis-limits.js';
 import { blankJournal, demoJournal } from '../src/domain.js';
@@ -76,9 +77,19 @@ async function fetchImage(url) {
 
 async function handle(message, sender) {
   if (!isInstagram(sender) && !isExtension(sender)) throw new Error('Unsupported sender.');
-  if (message.type === 'COMMUNITY_LIST' && isExtension(sender)) {
-    const query = message.after ? `?after=${encodeURIComponent(message.after)}` : '';
-    return request(`/community${query}`);
+  if (message.type === 'COMMUNITY_REQUEST' && isExtension(sender)) {
+    const { path, method, body, account } = message;
+    if (typeof path !== 'string' || !path.startsWith('/community') || path.length > 512
+      || !communityRoute(new URL(path, API_URL).pathname, method)) throw new Error('Invalid community request.');
+    const headers = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (account?.token !== undefined) {
+      if (!profileName.test(account.username || '') || typeof account.token !== 'string'
+        || account.token.length < 32 || account.token.length > 512) throw new Error('Invalid community credentials.');
+      headers.Authorization = `Bearer ${account.token}`;
+      headers['X-Touch-Grass-Profile'] = account.username;
+    } else if (account) headers['X-Touch-Grass-Signed-In'] = 'true';
+    return request(path, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   }
   if (['COMMUNITY_PROFILE', 'SHARE_POSTS', 'UNSHARE_PROFILE'].includes(message.type)) {
     const username = String(message.username || '').toLowerCase();
@@ -92,7 +103,7 @@ async function handle(message, sender) {
     }
   }
   if (message.type === 'HEALTH') return request('/health');
-  if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL('index.html#journal') }).then(() => ({ ok: true }));
+  if (message.type === 'OPEN_JOURNAL') return api.tabs.create({ url: api.runtime.getURL(message.view === 'plans' ? 'index.html#plans' : 'index.html#journal') }).then(() => ({ ok: true }));
   if (message.type === 'COLLECT_POST' && isInstagram(sender)) return collectPost(message.url, sender.tab.id, message.maxPhotos);
   if (message.type === 'FETCH_IMAGE' && isInstagram(sender)) return fetchImage(message.url);
   if (message.type === 'CANCEL_CAPTURE') { const id = captures.get(sender.tab?.id); if (id) await api.tabs.remove(id).catch(() => {}); return { ok: true }; }
