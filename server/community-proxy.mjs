@@ -1,28 +1,37 @@
+import { communityRoute, profileName } from '../src/community-routes.js';
+
 export function communityProxy({ url, profile, token, fetchImpl }) {
   const origin = url ? new URL(url) : null;
   if (origin && origin.protocol !== 'https:' && !(origin.protocol === 'http:' && origin.hostname === '127.0.0.1')) {
     throw new Error('Use HTTPS for TOUCH_GRASS_COMMUNITY_URL.');
   }
   if (origin && (origin.username || origin.password)) throw new Error('Use a separate publishing credential.');
-  const publisher = origin && token && /^[a-z0-9_.]{1,30}$/.test(profile || '') ? profile : null;
+  const publisher = origin && token && profileName.test(profile || '') ? profile : null;
 
   async function forward(req, res, send) {
     const target = new URL(req.url, 'http://localhost');
-    const match = /^\/community(?:\/([a-z0-9_.]{1,30}))?$/.exec(target.pathname);
-    if (!match) return false;
-    const reading = req.method === 'GET';
+    if (!communityRoute(target.pathname, req.method)) return false;
     if (!origin) {
       send(503, { error: 'Community sharing is not configured.' });
       return true;
     }
+
+    const reading = req.method === 'GET';
     const extension = !req.headers.origin || /^(chrome|moz)-extension:\/\//.test(req.headers.origin);
-    if (!reading && (!extension || !publisher || match[1] !== publisher || !['PUT', 'DELETE'].includes(req.method))) {
+    const explicit = profileName.test(req.headers['x-touch-grass-profile'] || '') && req.headers.authorization;
+    const useLocalCredential = extension && publisher && (!reading || req.headers['x-touch-grass-signed-in'] === 'true');
+    const request = { method: req.method, signal: AbortSignal.timeout(12000), redirect: 'error', headers: {} };
+    if (explicit) {
+      request.headers.Authorization = req.headers.authorization;
+      request.headers['X-Touch-Grass-Profile'] = req.headers['x-touch-grass-profile'];
+    } else if (useLocalCredential) {
+      request.headers.Authorization = `Bearer ${token}`;
+      request.headers['X-Touch-Grass-Profile'] = publisher;
+    } else if (!reading) {
       send(403, { error: 'Publishing is unavailable for this profile.' });
       return true;
     }
     try {
-      const request = { method: req.method, signal: AbortSignal.timeout(12000), redirect: 'error' };
-      if (!reading) request.headers = { Authorization: `Bearer ${token}` };
       if (req.method === 'PUT') {
         let size = 0;
         const chunks = [];

@@ -68,7 +68,7 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Evergreen-Client');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Evergreen-Client, Authorization, X-Touch-Grass-Profile');
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: MAX_PROFILE_POSTS, photoLimit: MAX_ANALYSIS_PHOTOS, photosPerPost: MAX_PHOTOS_PER_POST, analysisFormatVersion: 3, community: community.configured, publisher: community.publisher });

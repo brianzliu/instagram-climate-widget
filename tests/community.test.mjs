@@ -64,3 +64,45 @@ test('post revisions ignore rotating signatures and change with the source capti
   assert.notEqual(await postRevision({ ...original, images: [{ url: 'https://a.cdninstagram.com/new.jpg' }] }), revision);
   assert.equal(await postRevision({ ...original, captionSource: 'missing' }), null);
 });
+
+test('web uploads, likes and comments are durable and scoped to signed-in accounts', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'touch-grass-board-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const tokens = { author: token, neighbor: 'another-fixture-token-for-comments', guest: 'another-fixture-token-for-a-guest' };
+  const cloud = await listen(createCommunityServer({ directory, tokens }), t);
+  const proxy = await listen(createServer({ communityUrl: cloud }), t);
+  const direct = { id: 'web-7e15690d-ba4b-4884-a2e2-acf33c6eaa10', source: 'direct', action: 'Repaired my bike.', images: first.images };
+  const post = `/community/author/posts/${direct.id}`;
+  const comment = { id: '7e15690d-ba4b-4884-a2e2-acf33c6eaa11', text: 'I want to try this too.' };
+
+  function request(base, path, method, name, body) {
+    return fetch(base + path, { method, headers: {
+      Origin: 'http://localhost:5173',
+      ...(name ? { 'X-Touch-Grass-Profile': name, Authorization: `Bearer ${tokens[name]}` } : {}),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  }
+  assert.equal((await request(cloud, '/community/auth/session', 'POST', 'neighbor')).status, 200);
+  assert.equal((await request(cloud, '/community/author', 'PUT', 'neighbor', { posts: [direct] })).status, 403);
+  assert.equal((await request(cloud, '/community/author', 'PUT', 'author', { posts: [direct] })).status, 200);
+  assert.equal((await request(cloud, post + '/like', 'PUT', null, { liked: true })).status, 403);
+
+  const like = () => request(proxy, post + '/like', 'PUT', 'neighbor', { liked: true });
+  const addComment = () => request(proxy, post + '/comments', 'PUT', 'neighbor', comment);
+  const responses = await Promise.all([like(), like(), addComment(), addComment()]);
+  assert.deepEqual(responses.map(response => response.status), [200, 200, 200, 200]);
+  const board = await request(cloud, '/community/feed/recent', 'GET', 'neighbor').then(response => response.json());
+  assert.equal(board.posts.length, 1);
+  assert.equal(board.posts[0].url, undefined);
+  assert.equal(board.posts[0].likeCount, 1);
+  assert.equal(board.posts[0].liked, true);
+  assert.deepEqual(board.posts[0].comments.map(entry => [entry.username, entry.text]), [['neighbor', comment.text]]);
+  const anonymous = await request(cloud, '/community/feed/recent', 'GET').then(response => response.json());
+  assert.equal(anonymous.posts[0].liked, false);
+  assert.equal(anonymous.posts[0].likes, undefined);
+  assert.equal((await request(cloud, post + '/comments/' + comment.id, 'DELETE', 'guest')).status, 403);
+  assert.equal((await request(cloud, post + '/comments/' + comment.id, 'DELETE', 'author')).status, 200);
+  assert.equal((await request(cloud, post, 'DELETE', 'neighbor')).status, 403);
+  assert.equal((await request(cloud, post, 'DELETE', 'author')).status, 200);
+  assert.deepEqual(await request(cloud, '/community/feed/recent', 'GET').then(response => response.json()), { posts: [], next: null });
+});
