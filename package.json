@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "community": "node --env-file-if-exists=.env server/community.mjs",
     "api": "node --env-file-if-exists=.env server/index.mjs",
     "build": "vite build && node scripts/build-extension.mjs",
     "test": "node --test tests/*.test.mjs",

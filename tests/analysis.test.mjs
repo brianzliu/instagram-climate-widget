@@ -4,20 +4,21 @@ import { parseModelAnalysis, schemaForPostCount, validateAnalysis } from '../src
 import { buildRequest, createServer, validateInput, validOrigin } from '../server/index.mjs';
 
 export function sampleAnalysis(count = 1) {
-  return { summary: 'A plant-based meal appears in the sample.', categories: Object.fromEntries(['transport', 'food', 'circular'].map(c => [c, { supportive: 9, higherImpact: 9, uncertain: 9, explanation: 'Limited to visible evidence.' }])), posts: Array.from({ length: count }, (_, i) => ({ index: i + 1, observation: 'The caption describes a plant-based meal.', category: 'food', signal: 'supportive', evidence: 'Caption says vegan lunch.', confidence: 'medium' })), limitations: 'Curated posts are not a verified footprint. Some images may be missing.' };
+  return { summary: 'A plant-based meal appears in the sample.', posts: Array.from({ length: count }, (_, i) => ({ index: i + 1, observation: 'The caption describes a plant-based meal.', signal: 'supportive', evidence: 'Caption says vegan lunch.', confidence: 'medium' })), limitations: 'Curated posts are not a verified footprint. Some images may be missing.' };
 }
 const post = { caption: 'A vegan lunch.', images: ['data:image/jpeg;base64,/9j/'], captionSource: 'post heading', warnings: [] };
-test('findings must cover the exact sample, and category totals are recalculated', () => {
-  const a = validateAnalysis(sampleAnalysis(2), 2); assert.equal(a.categories.food.supportive, 2); assert.equal(a.categories.transport.supportive, 0);
+test('findings cover the exact sample and use recognized signals', () => {
+  const a = validateAnalysis(sampleAnalysis(2), 2); assert.equal(a.posts.filter(post => post.signal === 'supportive').length, 2);
   assert.throws(() => validateAnalysis(sampleAnalysis(2), 1));
   const duplicate = sampleAnalysis(2); duplicate.posts[1].index = 1; assert.throws(() => validateAnalysis(duplicate, 2));
-  const invalid = sampleAnalysis(); invalid.posts[0].category = 'none'; assert.throws(() => validateAnalysis(invalid, 1));
+  const invalid = sampleAnalysis(); invalid.posts[0].signal = 'unknown'; assert.throws(() => validateAnalysis(invalid, 1));
 });
 test('only bounded inline images reach OpenRouter, with captions paired by post', () => {
   assert.equal(validateInput({ posts: [post] }).length, 1);
   assert.throws(() => validateInput({ posts: [] }));
   assert.throws(() => validateInput({ posts: [{ ...post, images: ['https://private.example/image.jpg'] }] }));
-  assert.throws(() => validateInput({ posts: [{ ...post, images: [] }] }));
+  assert.throws(() => validateInput({ posts: [{ ...post, images: [], captionSource: 'missing' }] }));
+  assert.equal(validateInput({ posts: [{ ...post, images: [] }] }).length, 1);
   const request = buildRequest([post], 'provider/model');
   assert.equal(request.model, 'provider/model'); assert.equal(request.messages[1].content[2].image_url.detail, 'low');
   assert.ok(request.messages[1].content[1].text.includes('A vegan lunch.'));
@@ -53,25 +54,24 @@ test('photo budgets cap the complete request and block legacy 80-photo uploads b
   assert.equal(calls, 0);
 });
 
-test('partial model results expose missing indices without manufacturing category signals', () => {
+test('partial model results expose missing indices without manufacturing positive signals', () => {
   const partial = sampleAnalysis(2); partial.posts[1].index = 3;
   const result = parseModelAnalysis(JSON.stringify(partial), 4);
   assert.deepEqual(result.coverage.missingIndices, [2, 4]);
   assert.equal(result.coverage.analyzedPosts, 2);
-  assert.equal(result.categories.food.supportive, 2);
+  assert.equal(result.posts.filter(post => post.signal === 'supportive').length, 2);
   assert.deepEqual(result.posts.filter(p => p.signal === 'notAnalyzed').map(p => p.index), [2, 4]);
   assert.match(result.summary, /Partial analysis/);
-  assert.ok(result.coverage.notes[0].includes('excluded from category counts'));
+  assert.ok(result.coverage.notes[0].includes('No model finding'));
 });
 
-test('missing prose and category summaries fall back to project copy and derived counts', () => {
-  const response = sampleAnalysis(); delete response.summary; delete response.limitations; delete response.categories;
+test('missing prose uses project copy', () => {
+  const response = sampleAnalysis(); delete response.summary; delete response.limitations;
   const result = parseModelAnalysis(JSON.stringify(response), 1);
-  assert.equal(result.categories.food.supportive, 1);
-  assert.equal(result.categories.transport.supportive, 0);
+  assert.equal(result.posts[0].signal, 'supportive');
   assert.match(result.summary, /1 of 1/);
-  assert.match(result.limitations, /not a verified footprint/);
-  assert.equal(result.coverage.notes.length, 3);
+  assert.match(result.limitations, /sample of curated posts/);
+  assert.equal(result.coverage.notes.length, 2);
 });
 
 test('model formatting variations are accepted but empty or ambiguous evidence is rejected', () => {
@@ -90,7 +90,7 @@ test('local backend rejects arbitrary website origins and exposes no API key', a
   const blocked = await fetch(`${url}/health`, { headers: { ...headers, Origin: 'https://instagram.com' } }); assert.equal(blocked.status, 403);
   const health = await fetch(`${url}/health`, { headers }); const healthText = await health.text(); assert.ok(!healthText.includes('test-private-key')); assert.equal(JSON.parse(healthText).configured, true);
   const response = await fetch(`${url}/analyze`, { method: 'POST', headers, body: JSON.stringify({ posts: [post] }) });
-  assert.equal(response.status, 200); assert.equal((await response.json()).analysis.categories.food.supportive, 1);
+  assert.equal(response.status, 200); assert.equal((await response.json()).analysis.posts[0].signal, 'supportive');
   assert.equal(validOrigin('http://127.0.0.1:5173'), true); assert.equal(validOrigin('https://evil.example'), false);
 });
 test('missing keys and upstream failures produce actionable errors', async t => {
@@ -113,7 +113,7 @@ test('analysis jobs return immediately, retain one paid request, and expose resu
   // Yield until the mocked upstream promise settles, without a timed sleep.
   await new Promise(resolve => setImmediate(resolve));
   const done = await fetch(`${url}/jobs/${id}`, { headers }); const result = await done.json();
-  assert.equal(result.state, 'done'); assert.equal(result.result.analysis.categories.food.supportive, 1);
+  assert.equal(result.state, 'done'); assert.equal(result.result.analysis.posts[0].signal, 'supportive');
   assert.equal(calls, 1);
 });
 

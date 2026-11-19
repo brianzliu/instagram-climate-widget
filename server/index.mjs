@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { communityProxy } from './community-proxy.mjs';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { SYSTEM_PROMPT, schemaForPostCount, parseModelAnalysis } from '../src/analysis-contract.js';
@@ -22,7 +23,7 @@ export function validateInput(body) {
       images++;
     }
   }
-  if (images === 0) throw new Error('No readable images were collected. Please retry on a profile with accessible photos.');
+  if (images === 0 && !body.posts.some(post => post.captionSource === 'post heading' && post.caption.trim())) throw new Error('No readable photos or captions were collected.');
   return body.posts;
 }
 export function buildRequest(posts, model, maxTokens = 5000) {
@@ -35,7 +36,12 @@ export function buildRequest(posts, model, maxTokens = 5000) {
   content.push({ type: 'text', text: `Return exactly ${posts.length} post findings. Required indices: ${posts.map((_, i) => i + 1).join(', ')}. Include notRelevant findings for unrelated posts; do not omit them.` });
   return { model, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content }], temperature: 0.2, max_tokens: maxTokens, response_format: { type: 'json_schema', json_schema: { name: 'climate_profile', strict: true, schema: schemaForPostCount(posts.length) } }, provider: { require_parameters: true, data_collection: 'deny' } };
 }
-export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash', fetchImpl = fetch } = {}) {
+export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash', fetchImpl = fetch,
+  communityUrl = process.env.TOUCH_GRASS_COMMUNITY_URL,
+  shareProfile = process.env.TOUCH_GRASS_SHARE_PROFILE,
+  shareToken = process.env.TOUCH_GRASS_SHARE_TOKEN,
+} = {}) {
+  const community = communityProxy({ url: communityUrl, profile: shareProfile, token: shareToken, fetchImpl });
   let active = false; const jobs = new Map();
   async function runModel(posts) {
     const maxTokens = Math.min(12000, Math.max(1000, Number(process.env.OPENROUTER_MAX_TOKENS) || 5000));
@@ -61,11 +67,12 @@ export function createServer({ apiKey = process.env.OPENROUTER_API_KEY, model = 
     if (!validOrigin(origin) && !(!origin && req.headers['x-evergreen-client'] === 'extension' && req.headers['sec-fetch-site'] !== 'cross-site')) return send(403, { error: 'Only the Touch Grass extension or local development app may use this backend.' });
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Evergreen-Client');
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
-    if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: MAX_PROFILE_POSTS, photoLimit: MAX_ANALYSIS_PHOTOS, photosPerPost: MAX_PHOTOS_PER_POST, analysisFormatVersion: 2 });
+    if (req.method === 'GET' && req.url === '/health') return send(200, { configured: !!apiKey, model, imageEdge: 448, postLimit: MAX_PROFILE_POSTS, photoLimit: MAX_ANALYSIS_PHOTOS, photosPerPost: MAX_PHOTOS_PER_POST, analysisFormatVersion: 3, community: community.configured, publisher: community.publisher });
+    if (req.url.startsWith('/community') && await community.forward(req, res, send)) return;
     for (const [id, job] of jobs) if (Date.now() - job.createdAt > 600000) jobs.delete(id);
     if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url)) {
       const job = jobs.get(req.url.split('/')[2]);
