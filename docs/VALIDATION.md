@@ -1,5 +1,16 @@
 # MVP validation
 
+## Touch Grass 0.3
+
+Validated November 19, 2026.
+
+- 20 unit and integration tests passed. They cover post revisions, the photo budget, partial model responses, public sharing with profile-scoped credentials, storage across service restarts, removal, and journal dates.
+- 15 browser tests passed, including the installed Chromium extension. Fixture tests cover scan checkmarks, revised captions, cached profile summaries, explicit photo selection, the separate community gallery, action review, and recap availability.
+- The desktop and mobile journal and recap layouts were inspected. Both extension targets built and were packaged.
+- Live Instagram, paid model calls, and a public community deployment remain unverified for this version. A caption-only edit that isn't visible on the profile grid can require opening the post or running **Scan for changes**. The gallery requires an HTTPS deployment with a persistent disk and provisioned profile credentials.
+
+The sections below describe earlier versions.
+
 ## Touch Grass 0.2 update
 
 Validated November 17, 2026. The extension, dashboard, popup, icons, recap exports, and distribution filenames now use Touch Grass. Legacy storage keys and the original Firefox add-on ID remain unchanged to preserve existing journals.

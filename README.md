@@ -1,144 +1,59 @@
 # Touch Grass
 
-A greener take on your feed. Touch Grass places a small climate insight widget beside an Instagram profile photo. It reads the first 10 accessible grid posts with a hard limit of 20 photos total, up to two per post, plus captions. Photos are compressed locally before a configurable OpenRouter vision model describes the visible signals.
+Touch Grass spots climate-friendly actions in Instagram posts, gives them a little encouragement, and lets you keep the actions you confirm in a private journal. The extension handles scanning. A separate web app includes the journal, Climate Wrapped, and a community gallery for photos people choose to share.
 
-The companion journal includes personal action logging, week/month/year trends, category filters, notes, and a downloadable Climate Wrapped recap. A separate demo journal contains fictional records. Profile observations never count as your own actions.
+## Install the extension
 
-Version 0.2 introduces the Touch Grass name, grass icon, lighter dashboard, compact widget, and simplified popup. The original Firefox add-on ID and local storage keys are intentionally retained so existing journal data stays accessible when you reload the same extension. Internal legacy identifiers do not change the displayed product name.
-
-## Quick start
-
-Requires Node.js 22.9+ and an OpenRouter API key with credits.
+Use Node.js 22.9 or newer.
 
 ```sh
 npm install
 cp .env.example .env
-```
-
-Edit `.env` in your editor. Add your key and choose an image-capable model with structured output support.
-
-```dotenv
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemini-2.5-flash
-```
-
-The model above is a configurable starting point. Availability, supported parameters, and prices depend on OpenRouter and its providers. The backend requests providers that disallow data collection. If your model has no compatible provider, choose another model. The API key stays in the local backend and never goes into the extension bundle, browser storage, or version control.
-
-```sh
-npm run api
-```
-
-Keep that terminal running. In a second terminal, build the extension:
-
-```sh
 npm run build
 ```
 
-### Zen / Firefox
+For new scans, set `OPENROUTER_API_KEY` and your image-capable model in `.env`. Run `npm run api` and keep it running while you scan. The key stays in the loopback backend.
 
-1. Open `about:debugging#/runtime/this-firefox` in Zen.
-2. Choose **Load Temporary Add-on**.
-3. Select `dist/firefox/manifest.json`.
-4. Visit Instagram and log in normally. Open a profile page.
-5. If necessary, allow Instagram access in the extension's browser permissions and reload the profile.
+- **Zen and Firefox.** Open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/firefox/manifest.json`. Enable the extension's Instagram access if prompted. Load it again after a browser restart. The release XPI is unsigned.
+- **Comet and Chromium.** Open `chrome://extensions`, enable developer mode, and load the entire `dist/chromium` folder as an unpacked extension.
 
-The Firefox package declares website-content transmission because an analysis sends selected photos and captions to OpenRouter. Collection still starts only after clicking Analyze.
+Version 0.3 retains the original Firefox add-on ID and storage keys. Reload the same installed extension to keep your journal.
 
-The widget appears next to the profile photo. Temporary Firefox/Zen add-ons are removed when the browser restarts. Load the manifest again after restarting. Persistent installation requires Mozilla signing; the packaged `.xpi` is unsigned. No browser security settings need to be weakened for temporary installation.
+## Scan, review, recap
 
-Zen uses Firefox add-ons. See [Zen's extension documentation](https://docs.zen-browser.app/user-manual/extensions) and [Mozilla's temporary installation guide](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/).
+1. Open an Instagram profile. Click **Scan up to 10 posts** beside the profile photo. Touch Grass checks up to 10 accessible grid posts, including pins, with a limit of two photos per post and 20 per scan. The scan sends new or edited posts' compressed photos and captions to OpenRouter.
+2. Look for checkmarks on scanned tiles. A visible grid change clears the checkmark. Opening a previously scanned post can also reveal an edited caption. **Scan for changes** compares the readable caption and media identifiers before reusing the old finding. Unchanged posts with a readable revision can skip image downloads and inference.
+3. Open **My journal → Instagram observations**. Review the caption and evidence. If the post depicts an action you took, use **Review for my journal**, edit the action as needed, and confirm the date. Those actions join anything you log directly. Scanning another person's posts does not add to your personal recap.
+4. Open **Climate Wrapped** and choose **Day**, **Week**, or **Month**. Each selection opens the most recently completed period in your local time. Weeks start Monday. A recap appears after the period closes if it contains at least one logged action. You can revisit past recaps and save them as images. Recaps count recorded actions, with no emissions estimate.
 
-### Comet / Chrome / other Chromium browsers
+Use `npm run dev` for the web app on `http://127.0.0.1:5173`. The browser version opens a clearly labelled fictional demo. Use **Start my journal** for an empty personal journal. The extension and the website have separate private storage. To bring actions from the extension to the website, export your personal journal JSON in **Settings & data** and use **Import personal actions** on the site. Import restores actions, including actions you confirmed from Instagram. Scan evidence remains in the original journal.
 
-1. Open `chrome://extensions` in Comet or Chrome.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select the entire `dist/chromium` folder.
-4. Visit an Instagram profile and reload the page if it was already open.
+## Host the community site
 
-Use the extension toolbar popup to open the journal or OpenRouter settings. See [Chrome's unpacked extension instructions](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked).
+The community server serves the web app and its public gallery API. Run a single Node process with a persistent cloud disk mounted at `TOUCH_GRASS_DATA_DIR`, behind an HTTPS reverse proxy. The data is stored on that disk across restarts. The community process needs no OpenRouter credentials.
 
-### Explore the interface without installing
+1. Run `npm ci` and `npm run build` on the host, or deploy the repository with the built `dist/app` directory.
+2. Configure the community process with `TOUCH_GRASS_DATA_DIR` and `TOUCH_GRASS_PUBLISHERS`. The latter is a JSON object mapping each lowercase Instagram handle to a unique, random credential of at least 32 characters. Give credentials only to confirmed profile owners. Configure `PORT` and `TOUCH_GRASS_BIND` to match the deployment.
+3. Start it with `npm run community`. Share the resulting HTTPS URL with `/#community` to open the gallery directly.
+4. On each installation with the local analysis backend, set `TOUCH_GRASS_COMMUNITY_URL` to the site's HTTPS origin. To let that person publish, also set the provisioned `TOUCH_GRASS_SHARE_PROFILE` and `TOUCH_GRASS_SHARE_TOKEN`. Restart `npm run api`. Readers need no personal credential.
 
-```sh
-npm run dev
-```
+A provisioned publisher can scan their own profile and choose **Review & share photos**. Select each post to share, check the displayed photos, and edit the action description before publishing. Shared photos, action descriptions, dates where available, and original post links are public. Captions, private notes, and unselected photos are excluded. The gallery retains up to 20 recently shared posts per profile. **Settings & data → Test connection → Remove shared posts** removes the shared profile and photos from the server. Copies previously saved by visitors may still exist.
 
-Open `http://127.0.0.1:5173`. The browser preview starts with fictional demo records. Use **Start my journal** to switch to an empty personal journal. Profile collection runs only from the installed extension on Instagram.
+Installed extensions show a summary of shared actions on the profile's Touch Grass button on hover or keyboard focus. The summary reflects the last publication. Scanning checks the source revision before using an owner-reviewed result in place of a new model request. Viewers can browse the public gallery directly without installing the extension, logging in to Instagram, or running a model scan.
 
-## Profile analysis workflow
+## Privacy and limits
 
-1. The extension watches rendered Instagram profile pages and mounts a widget beside the profile photo. It handles navigation between profiles without requiring a full reload.
-2. Click **Analyze first 10 posts**. The widget explains the external upload before collection starts. Opening a profile alone never triggers a paid model request.
-3. The collector takes up to 10 distinct `/p/` or `/reel/` links from the grid, preserving grid order. Pinned posts count. It scrolls a bounded distance if fewer than 10 links are initially rendered.
-4. One temporary inactive tab at a time opens each post using the browser's existing Instagram session. The collector reads the caption and published-date metadata, collecting up to two accessible photos per post. It stops advancing the carousel at that limit. Each temporary tab closes after collection, including error paths.
-5. Media downloads come only from Instagram CDN domains. Each image is resized to a maximum edge of 448 pixels and encoded as JPEG at quality 0.62. No upscaling. The original aspect ratio is preserved. Large or unreadable media produce collection warnings.
-6. Captions stay paired with their posts. The backend submits one multimodal request to OpenRouter. The model receives low-detail image hints. Actual image token use depends on the model; reducing file size does not guarantee proportional token savings.
-7. The model identifies supportive, potentially higher-impact, uncertain, or irrelevant signals. Category counts are recomputed from validated per-post findings. No total carbon footprint or moral score is generated.
-8. Results show category signals and collection coverage. Expand **View evidence & collection notes** for captions, publication dates, confidence, upload size, and limitations. Completed analyses save automatically to **Journal → Instagram observations**. If a local save fails, a manual retry button appears. Previously saved analyses appear on return visits with their timestamp.
+- Your journal and scan evidence stay in the browser. A scan sends only the new or changed items selected by the workflow to the configured OpenRouter model. The backend requests providers with data collection disabled. Provider terms still apply. Publishing to the gallery is a separate, explicit export.
+- Instagram does not expose an authoritative edit version on every grid tile. A caption-only change can leave a last-scan checkmark in place until the caption is visible or you scan for changes. Captions unavailable from a post heading and unreadable media limit cache reuse. Community posts remain as last published until the owner updates or removes them.
+- The scan uses rendered Instagram pages and does not bypass access restrictions. Instagram layout changes, language settings, pins, and private profiles can affect coverage. Videos contribute cover frames only.
+- Model suggestions need human review. They describe what appears in a limited sample and do not establish a person's behavior, values, or footprint.
+- Recaps are available in the app when you open it. This version does not send notifications or sync private journals.
 
-Transport, food, and reuse/repair are the three supported categories. Video posts use visible cover frames only. Playback and audio are not analyzed. A caption may describe multiple carousel photos, so the model receives the caption once alongside all collected slides from that post.
-
-The 20-photo cap is enforced in the collector, upload preparation, and backend. Requests from older extension builds that exceed the limit are rejected before contacting OpenRouter. `OPENROUTER_MAX_TOKENS` controls output generation, not image-input tokens. The image cap bounds the number of photos; actual token usage still depends on the selected model and captions.
-
-Journal observations use the post's published date where accessible, with the analysis time recorded separately. Unknown publication dates stay marked unknown. Re-analysis updates matching post entries instead of duplicating them, while older observations remain available. Model findings are labelled for human review and do not automatically become personal climate actions.
-
-The request schema requires exactly one finding for every supplied post. If a provider nevertheless omits findings, valid findings remain available as a clearly labelled partial analysis. Missing posts are marked unanalysed and excluded from category counts. Missing summary prose uses explicit project copy rather than invented model observations. Empty findings, duplicate indices, and invalid evidence still fail validation. Token-budget exhaustion has a separate error explaining the output limit. No automatic second paid request is made.
-
-If you see an old generic "incomplete analysis" message after an update, restart the backend, reload Touch Grass in the browser extension manager, and refresh Instagram. Backend diagnostic logs include format metadata only, not captions, photos, model prose, or API keys.
-
-## Data and privacy
-
-- Personal records live in `storage.local`. The development preview uses `localStorage`. Demo records use a separate key.
-- No analytics, automatic posting, DMs, likes, follows, or account changes.
-- Collection starts only after clicking Analyze. Cancel stops further collection; an in-flight media download may finish locally.
-- After model upload begins, the request may incur an OpenRouter charge even if you navigate away. The backend holds at most one active analysis and uses short job polling so a slow model response does not depend on a long-lived extension service-worker request.
-- Source images are not saved to the journal or backend disk. They exist in memory during processing. Completed backend results expire from memory after ten minutes on the next request.
-- OpenRouter and the selected inference provider receive compressed images and captions. Their policies still apply. The backend requests `provider.data_collection: deny`; this is not a claim of zero retention.
-- The backend binds only to `127.0.0.1:8787`. It validates the Host and Origin, rejects ordinary website requests, and limits payloads to 24 MB. Keep it local.
-- Export or delete records from **Settings & data**. Deletion here does not delete information already sent to OpenRouter.
-
-## Limits and research scope
-
-This is a working MVP with automated fixture-based tests. It has not been validated against a live logged-in Instagram account or a paid OpenRouter response. Instagram DOM changes, localization, login redirects, restricted profiles, and unsupported carousel controls may prevent complete collection. Missing content is reported instead of silently treated as evidence. Non-English carousel Next labels have a small explicit allowlist; other controls may require a selector update.
-
-The first 10 grid posts are not necessarily the 10 most recent posts because of pins. Deleted or unavailable posts cannot be recovered. The collector uses rendered page content, not private Instagram APIs, and does not bypass access restrictions. Concurrent changes to a profile during collection can alter what is accessible.
-
-Model observations can be wrong. A photograph does not establish ownership, consumption, travel purpose, income, or access to alternatives. Compression also removes detail. Use the evidence view to check results. This prototype does not validate lifecycle emissions, compute savings, or claim to measure an individual's actual footprint.
-
-The prototype supports the proposal's action journal, progress reflection, profile visibility, and uncertainty exploration. A consented participant study, demographic survey, validated emissions factors, and causal analysis remain separate research work. Do not interpret sample records or model outputs as study findings.
-
-## Development and verification
+## Verify and package
 
 ```sh
-npm test             # Domain, schema, backend, and permission checks
-npm run build        # Build both browser packages
-npm run test:e2e     # Dashboard, collector, widget, and extension browser tests
-npm run package      # Tests + build + release ZIP/XPI files and SHA256SUMS
+npm run package    # Unit/integration tests, both builds, ZIP/XPI and checksums
+npm run test:e2e   # Browser tests with synthetic profiles and mocked model responses
 ```
 
-Browser tests use Chrome by default. Set `PLAYWRIGHT_CHANNEL=chromium` to use Playwright Chromium. The real extension smoke test needs Playwright's Chromium-for-testing build; install it with `npx playwright install chromium`, or set `EVERGREEN_EXTENSION_BROWSER` to an existing Chromium-for-testing executable. If it is absent, that one smoke test reports a skip. Tests use synthetic Instagram pages and mocked model responses, not your account or API credits.
-
-After editing extension code, rebuild and reload the extension in the browser's extension manager, then reload Instagram. `npm run dev` provides hot reload for the companion journal only.
-
-```
-extension/             Profile widget, DOM collector, compression, background bridge, popup
-src/                   React journal, local storage, domain logic, model output contract
-server/                Loopback-only OpenRouter proxy and transient analysis jobs
-scripts/               Dual-browser build and packaging
-tests/                 Unit/integration and browser tests
-dist/firefox/          Zen/Firefox unpacked extension
-dist/chromium/         Comet/Chrome unpacked extension
-release/               Packaged distributions, generated by npm run package
-```
-
-Commit small, coherent batches using scoped Conventional Commits. See [AGENTS.md](AGENTS.md).
-
-## Sources
-
-The UI separates observed posts from verified behavior, and uses progress reflection rather than emissions rankings. Its research references are starting points for testing the proposal, not proof of effectiveness:
-
-- [Harkin et al., 2016](https://doi.org/10.1037/bul0000025), progress monitoring and goal attainment.
-- [Sparkman & Walton, 2017](https://doi.org/10.1177/0956797617719950), changing social norms and sustainable choices.
-- [Schneider et al., 2017](https://doi.org/10.1371/journal.pone.0188781), anticipated pride and guilt in environmental decisions.
-- [OpenRouter image inputs](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding), paired text and inline image data.
-- [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), supported models and JSON schemas.
+To include the extension smoke test, use a Playwright Chromium-for-testing executable with `EVERGREEN_EXTENSION_BROWSER` or install Chromium for the current Playwright version. See [validation notes](docs/VALIDATION.md) for the live checks still needed.
