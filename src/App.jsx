@@ -1,12 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Bus, CalendarDays, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Globe2, HelpCircle, LayoutDashboard, Leaf, List, LoaderCircle, LockKeyhole, Plus, Recycle, Settings2, Sparkles, Sprout, Trash2, Users, Utensils, X } from 'lucide-react';
-import { ACTIONS, CATEGORIES, blankJournal, chartBuckets, createAction, dateKey, inRange, periodRange, stats } from './domain.js';
-import { downloadFile, extensionAPI, JOURNAL_KEYS, loadJournal, saveJournal } from './storage.js';
+import { ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Download, ExternalLink, HelpCircle, LayoutDashboard, Leaf, List, LoaderCircle, LockKeyhole, Plus, Settings2, Sparkles, Sprout, Trash2, Users, X } from 'lucide-react';
+import { ACTIONS, chartBuckets, createAction, dateKey, inRange, periodRange, stats } from './domain.js';
+import { downloadFile, extensionAPI, JOURNAL_KEYS, loadJournal, changeJournal } from './storage.js';
 import { journalObservations } from './journal-observations.js';
+import { Community, unshareProfile } from './Community.jsx';
 
-const nav = [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'profiles', label: 'Profile insights', icon: Users }, { id: 'timeline', label: 'Journal', icon: List }, { id: 'wrapped', label: 'Climate Wrapped', icon: Sparkles }];
-const categoryIcons = { transport: Bus, food: Utensils, circular: Recycle };
-const titles = { overview: ['Your overview', 'Small wins, logged.'], profiles: ['Profile insights', 'A greener take on your feed.'], timeline: ['Journal', 'Your recorded actions and dated Instagram observations.'], wrapped: ['Climate Wrapped', 'Your habits get a little spotlight.'], research: ['Behind Touch Grass', 'The question, the method, and the limits.'], settings: ['Settings & data', 'Your journal stays under your control.'] };
+const nav = [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'timeline', label: 'Journal', icon: List }, { id: 'wrapped', label: 'Climate Wrapped', icon: Sparkles }, { id: 'profiles', label: 'Community', icon: Users }];
+const titles = {
+  overview: 'Your overview',
+  timeline: 'Journal',
+  wrapped: 'Climate Wrapped',
+  profiles: 'Community',
+  research: 'Behind Touch Grass',
+  settings: 'Settings & data',
+};
 
 function GrassDoodle({ compact = false }) {
   return <svg className={`grass-doodle ${compact ? 'compact' : ''}`} viewBox="0 0 180 150" fill="none" aria-hidden="true">
@@ -37,34 +44,52 @@ function Modal({ title, children, onClose }) {
   return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref}><div className="modal-head"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></div>{children}</section></div>;
 }
 
-function ActionForm({ onSave, onClose }) {
-  const [kind, setKind] = useState('bus'); const [date, setDate] = useState(dateKey()); const [note, setNote] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
-  return <form onSubmit={async e => { e.preventDefault(); setSaving(true); try { await onSave(createAction({ kind, date, note })); onClose(); } catch (e) { setError(e.message); } finally { setSaving(false); } }}>
-    <p className="muted">What small win are we logging?</p><label>What did you do?<select value={kind} onChange={e => setKind(e.target.value)}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
+function ActionForm({ onSave, onClose, post }) {
+  const [kind, setKind] = useState(post ? 'custom' : 'bus');
+  const [title, setTitle] = useState(post?.finding?.observation.slice(0, 600) || '');
+  const [date, setDate] = useState(post?.date || (post ? '' : dateKey()));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  return <form onSubmit={async e => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave(createAction({ kind, title, date, note, source: post ? 'instagram' : 'manual', sourcePostId: post?.id }));
+      onClose();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }}>
+    {post ? <p>Review the suggested description and date. Save it only if you took this action.</p>
+      : <label>What did you do?<select value={kind} onChange={e => setKind(e.target.value)}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}<option value="custom">Write my own</option></select></label>}
+    {kind === 'custom' && <label>Action<input required maxLength={600} value={title} onChange={e => setTitle(e.target.value)} /></label>}
     <label>When?<input type="date" required max={dateKey()} value={date} onChange={e => setDate(e.target.value)} /></label>
-    <label>A little context <span className="muted">optional</span><textarea maxLength={600} rows={3} value={note} placeholder="What made this possible?" onChange={e => setNote(e.target.value)} /></label>
-    <p className="form-note"><LockKeyhole size={14} /> Saved only in this browser. Nothing is posted to Instagram.</p>{error && <p role="alert" className="error">{error}</p>}<button disabled={saving} className="button primary full">{saving ? 'Saving…' : 'Save action'}<Check size={16} /></button>
+    {!post && <label>Notes <span className="muted">optional</span><textarea maxLength={600} rows={3} value={note} placeholder="What made this possible?" onChange={e => setNote(e.target.value)} /></label>}
+    {error && <p role="alert" className="error">{error}</p>}
+    <button disabled={saving} className="button primary full">{saving ? 'Saving…' : post ? 'Confirm and save' : 'Save action'}<Check size={16} /></button>
   </form>;
 }
 
 function ActivityList({ actions, onDelete, limit }) {
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date));
   if (!sorted.length) return <div className="empty"><Sprout size={32} /><h3>Your journal has room to grow.</h3><p>Log an action to start seeing your habits over time.</p></div>;
-  return <div className="activity-list">{sorted.slice(0, limit).map(a => { const Icon = categoryIcons[a.category]; return <div className="activity" key={a.id}><span className={`category-icon ${a.category}`}><Icon size={19} /></span><div className="activity-main"><strong>{a.title}</strong><p>{a.note || CATEGORIES[a.category]?.label}</p></div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : 'Self-reported'}</small></div><button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>; })}</div>;
+  return <div className="activity-list">{sorted.slice(0, limit).map(a => <div className="activity" key={a.id}><span className="category-icon transport"><Sprout size={19} /></span><div className="activity-main"><strong>{a.title}</strong>{a.note && <p>{a.note}</p>}</div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : 'Self-reported'}</small></div><button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>)}</div>;
 }
 
 function TrendChart({ actions, anchor, period }) {
   const buckets = chartBuckets(actions, anchor, period); const max = Math.max(3, ...buckets.map(b => b.total));
-  return <div className="chart-wrap"><div className="chart-axis"><span>{max}</span><span>{Math.round(max / 2)}</span><span>0</span></div><div className="chart" role="img" aria-label={`${period} action chart. ${buckets.map(b => `${b.label}: ${b.total}`).join(', ')}`}><div className="chart-grid"><i /><i /><i /></div><div className="chart-bars">{buckets.map((b, i) => <div className="bar-column" key={i}><div className="bar-track" title={`${b.label}: ${b.total} actions`}><div className="stack" style={{ height: `${b.total / max * 100}%`, animationDelay: `${i * 15}ms` }}>{Object.keys(CATEGORIES).map(c => b.categories[c] > 0 && <span key={c} style={{ flex: b.categories[c], background: CATEGORIES[c].color }} />)}</div></div><span className="bar-label">{period !== 'month' || i === 0 || (i + 1) % 5 === 0 ? b.label : ''}</span></div>)}</div></div></div>;
+  return <div className="chart-wrap"><div className="chart-axis"><span>{max}</span><span>{max / 2}</span><span>0</span></div><div className="chart" role="img" aria-label={`${period} action chart. ${buckets.map(b => `${b.label}: ${b.total}`).join(', ')}`}><div className="chart-grid"><i /><i /><i /></div><div className="chart-bars">{buckets.map((b, i) => <div className="bar-column" key={i}><div className="bar-track" title={`${b.label}: ${b.total} actions`}><div className="stack" style={{ height: `${b.total / max * 100}%`, animationDelay: `${i * 15}ms` }}>{b.total > 0 && <span className="action-bar" />}</div></div><span className="bar-label">{period !== 'month' || i === 0 || (i + 1) % 5 === 0 ? b.label : ''}</span></div>)}</div></div></div>;
 }
 
-function ObservationList({ posts }) {
-  if (!posts.length) return <div className="empty"><Users size={32} /><h3>No Instagram observations here yet.</h3><p>Completed profile analyses are logged automatically. Try a different date or category filter.</p></div>;
+function ObservationList({ posts, reviewed, onReview }) {
+  if (!posts.length) return <div className="empty"><Users size={32} /><h3>No Instagram observations here yet.</h3><p>Completed profile analyses are logged automatically. Try a different date or scan a profile.</p></div>;
   return <div className="observation-list">{posts.map(post => {
-    const Icon = categoryIcons[post.finding?.category] || Leaf;
     return <article className="observation-entry" key={post.id}>
-      <div className="observation-heading"><span className={`category-icon ${post.finding?.category || ''}`}><Icon size={19} /></span><div><strong>@{post.username}</strong><span className="observation-status">Model suggestion · needs review</span></div><div className="observation-published"><time dateTime={post.publishedAt || post.publishedDate || undefined}>{post.date ? new Date(`${post.date}T12:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Published date unknown'}</time><small>Published</small></div></div>
+      <div className="observation-heading"><span className="category-icon transport"><Leaf size={19} /></span><div><strong>@{post.username}</strong><span className="observation-status">{post.stale ? 'Edited since last scan' : post.finding?.fromCommunity ? 'Reviewed by the profile owner' : 'Model suggestion · needs review'}</span></div><div className="observation-published"><time dateTime={post.publishedAt || post.publishedDate || undefined}>{post.date ? new Date(`${post.date}T12:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Published date unknown'}</time><small>Published</small></div></div>
       <p>{post.finding?.observation || 'No model finding available for this post.'}</p>
+      {post.finding?.signal === 'supportive' && !post.stale && !post.finding.fromCommunity && (reviewed.has(post.id)
+        ? <p className="muted">Saved to your actions</p>
+        : <button className="text-button" onClick={() => onReview(post)}>Review for my journal <ArrowRight size={14} /></button>)}
       <details><summary>Caption & evidence</summary><p className="observation-caption">{post.caption || 'Caption unavailable.'}</p><p>{post.finding?.evidence || 'No evidence returned.'}</p><p className="muted">{post.finding ? `${post.finding.confidence} model confidence · ${post.finding.signal}` : 'Unanalysed'} · Date source: {post.dateSource}</p></details>
       <div className="observation-footer"><span>Analysed {post.analyzedAt ? new Date(post.analyzedAt).toLocaleDateString() : 'at an unknown time'}</span><a href={post.url} target="_blank" rel="noreferrer">Original post<ExternalLink size={12} /></a></div>
     </article>;
@@ -72,8 +97,9 @@ function ObservationList({ posts }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState('overview'); const [mode, setMode] = useState(extensionAPI ? 'personal' : 'demo'); const [journal, setJournal] = useState(null); const [anchor, setAnchor] = useState(new Date()); const [period, setPeriod] = useState('month'); const [modal, setModal] = useState(null); const [toast, setToast] = useState(''); const [error, setError] = useState(''); const [filter, setFilter] = useState('all'); const [query, setQuery] = useState(''); const [health, setHealth] = useState(null);
+  const [page, setPage] = useState('overview'); const [mode, setMode] = useState(extensionAPI ? 'personal' : 'demo'); const [journal, setJournal] = useState(null); const [anchor, setAnchor] = useState(new Date()); const [period, setPeriod] = useState('month'); const [modal, setModal] = useState(null); const [toast, setToast] = useState(''); const [error, setError] = useState(''); const [query, setQuery] = useState(''); const [health, setHealth] = useState(null);
   const toastTimer = useRef();
+  const [reviewPost, setReviewPost] = useState(null);
   const [journalView, setJournalView] = useState('actions'); const [observedPeriod, setObservedPeriod] = useState('all');
   useEffect(() => { let canceled = false; setJournal(null); loadJournal(mode).then(data => { if (!canceled) setJournal(data); }).catch(e => setError(e.message)); return () => { canceled = true; }; }, [mode]);
   useEffect(() => {
@@ -82,67 +108,146 @@ export default function App() {
     extensionAPI?.storage.onChanged.addListener(changed); window.addEventListener('storage', webChanged);
     return () => { extensionAPI?.storage.onChanged.removeListener(changed); window.removeEventListener('storage', webChanged); };
   }, [mode]);
-  useEffect(() => { if (location.hash === '#profiles') setPage('profiles'); if (location.hash === '#settings') setPage('settings'); if (location.hash === '#journal') { setPage('timeline'); setJournalView('instagram'); } }, []);
+  useEffect(() => { if (location.hash === '#profiles' || location.hash === '#community') setPage('profiles'); if (location.hash === '#settings') setPage('settings'); if (location.hash === '#journal') { setPage('timeline'); setJournalView('instagram'); } }, []);
   const notify = message => { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); };
-  const update = async next => { await saveJournal(mode, next); setJournal(next); };
-  const addAction = async a => { await update({ ...journal, actions: [...journal.actions, a] }); notify('Small win saved.'); };
-  const deleteAction = async id => { try { await update({ ...journal, actions: journal.actions.filter(a => a.id !== id) }); notify('Action removed.'); } catch (e) { setError(e.message); } };
-  const changePage = id => { setPage(id); setQuery(''); setFilter('all'); };
+  const applyEdit = async edit => setJournal(await changeJournal(mode, edit));
+  const addAction = async action => {
+    await applyEdit({ type: 'addAction', action });
+    notify('Action saved.');
+  };
+  const deleteAction = async id => {
+    try { await applyEdit({ type: 'removeAction', id }); notify('Action removed.'); }
+    catch (e) { setError(e.message); }
+  };
+  async function importActions(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('Choose a journal export under 20 MB.');
+      await applyEdit({ type: 'importActions', data: JSON.parse(await file.text()) });
+      notify('Journal actions imported.');
+    } catch (e) { setError(e instanceof SyntaxError ? 'Choose a Touch Grass JSON export.' : e.message); }
+  }
+  const changePage = id => {
+    setPage(id);
+    setQuery('');
+    if (id === 'wrapped') {
+      setPeriod('month');
+      const now = new Date();
+      setAnchor(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    } else if (page === 'wrapped') {
+      setPeriod('month');
+      setAnchor(new Date());
+    }
+  };
   const range = periodRange(anchor, period); const actions = journal ? inRange(journal.actions, range) : []; const summary = stats(actions);
   const monthName = anchor.toLocaleDateString('en-US', { month: 'long' });
-  const dateLabel = period === 'year' ? String(anchor.getFullYear()) : period === 'week' ? `Week of ${new Date(`${range.start}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : `${monthName} ${anchor.getFullYear()}`;
-  const moveDate = delta => { const next = new Date(anchor); if (period === 'year') next.setFullYear(next.getFullYear() + delta); else if (period === 'month') { next.setDate(1); next.setMonth(next.getMonth() + delta); } else next.setDate(next.getDate() + 7 * delta); setAnchor(next); };
+  const dateLabel = period === 'day' ? anchor.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : period === 'year' ? String(anchor.getFullYear()) : period === 'week' ? `Week of ${new Date(`${range.start}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : `${monthName} ${anchor.getFullYear()}`;
+  const moveDate = delta => { const next = new Date(anchor); if (period === 'year') next.setFullYear(next.getFullYear() + delta); else if (period === 'month') { next.setDate(1); next.setMonth(next.getMonth() + delta); } else next.setDate(next.getDate() + (period === 'day' ? 1 : 7) * delta); setAnchor(next); };
   const exportJournal = () => { downloadFile(`touch-grass-${mode}-${dateKey()}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), mode, ...journal }, null, 2)); notify('Journal exported.'); };
   const checkHealth = async () => { setHealth({ checking: true }); try { const response = extensionAPI ? await extensionAPI.runtime.sendMessage({ type: 'HEALTH' }) : await fetch('http://127.0.0.1:8787/health').then(r => r.json()); if (response.error) throw new Error(response.error); setHealth(response); } catch { setHealth({ error: 'Backend not running. Start it with npm run api.' }); } };
   const profiles = journal?.observations || [];
   const observedPosts = journal ? journalObservations(journal) : [];
   const visibleObservations = observedPosts.filter(post =>
     (observedPeriod === 'all' || (observedPeriod === 'unknown' ? !post.date : post.date && post.date >= range.start && post.date < range.end)) &&
-    (filter === 'all' || post.finding?.category === filter) &&
     `${post.username} ${post.caption} ${post.finding?.observation || ''} ${post.finding?.evidence || ''}`.toLowerCase().includes(query.toLowerCase()));
   const deleteProfile = async id => {
     const profile = profiles.find(p => p.id === id);
-    try { await update({ ...journal, observations: profiles.filter(p => p.id !== id), observedPosts: (journal.observedPosts || []).filter(p => p.username !== profile?.username) }); } catch (e) { setError(e.message); }
+    try { await applyEdit({ type: 'removeProfile', username: profile.username }); } catch (e) { setError(e.message); }
   };
-  const previousAnchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1);
-  const previousCount = journal ? inRange(journal.actions, periodRange(previousAnchor)).length : 0;
+  const reviewed = new Set(journal?.actions.map(action => action.sourcePostId).filter(Boolean));
+  const visibleActions = actions.filter(action => `${action.title} ${action.note}`.toLowerCase().includes(query.toLowerCase()));
+  const recapEnded = range.end <= dateKey();
+  const highlighted = [...actions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+
+  function selectPeriod(nextPeriod) {
+    setPeriod(nextPeriod);
+    if (page !== 'wrapped') return;
+    const start = periodRange(new Date(), nextPeriod).start;
+    const previous = new Date(`${start}T12:00:00`);
+    previous.setDate(previous.getDate() - 1);
+    setAnchor(previous);
+  }
+
+  function downloadRecap() {
+    const label = dateLabel.replace(/[<>&"]/g, '');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+      <rect width="1080" height="1350" fill="#234231"/>
+      <g fill="#daf59f" font-family="Arial,sans-serif">
+        <text x="90" y="145" font-size="46" font-weight="bold">TOUCH GRASS!</text>
+        <text x="90" y="246" font-size="28">${label} · ${mode === 'demo' ? 'FICTIONAL DEMO' : 'CLIMATE WRAPPED'}</text>
+        <text x="78" y="720" font-size="390" font-weight="bold">${summary.total}</text>
+        <text x="94" y="824" font-size="53">${summary.total === 1 ? 'action' : 'actions'} logged</text>
+        <text x="95" y="920" font-size="38">${summary.days} active ${summary.days === 1 ? 'day' : 'days'}</text>
+        <text x="95" y="1210" font-size="24">Based on the actions you recorded.</text>
+      </g></svg>`;
+    downloadFile('touch-grass-wrapped.svg', svg, 'image/svg+xml');
+    notify('Recap saved.');
+  }
 
   return <div className="app-shell">
-    <aside className="sidebar"><a href="#" className="brand" aria-label="Touch Grass home" onClick={e => { e.preventDefault(); changePage('overview'); }}><span className="brand-mark"><img src="./favicon.svg" alt="" /></span><span className="brand-name">touch grass.</span></a><nav aria-label="Main navigation">{nav.map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => changePage(item.id)}><item.icon size={18} strokeWidth={1.6} />{item.label}</button>)}</nav>
+    <aside className="sidebar"><a href="#" className="brand" aria-label="Touch Grass home" onClick={e => { e.preventDefault(); changePage('overview'); }}><img className="brand-wordmark" src="./touch-grass-logo.png" alt="Touch Grass" /></a><nav aria-label="Main navigation">{nav.map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} aria-current={page === item.id ? 'page' : undefined} aria-label={item.label} onClick={() => changePage(item.id)}><item.icon size={18} strokeWidth={1.6} />{item.label}</button>)}</nav>
       <div className="sidebar-bottom"><button className={`nav-item ${page === 'research' ? 'active' : ''}`} onClick={() => changePage('research')}><HelpCircle size={18} />About the project</button><button className={`nav-item ${page === 'settings' ? 'active' : ''}`} onClick={() => changePage('settings')}><Settings2 size={18} />Settings & data</button><div className="local-status"><span className="avatar">{mode === 'demo' ? 'D' : 'Y'}</span><div><strong>{mode === 'demo' ? 'Demo journal' : 'Your private journal'}</strong><span><span className="status-dot" />Stored on this device</span></div></div></div>
     </aside>
-    <div className="main-shell"><header className="topbar"><span className="workspace-label"><span className="status-dot" />Your little corner</span><div className="topbar-right"><span className="privacy-label"><LockKeyhole size={13} />Saved on this device</span><button className="mode-toggle" onClick={() => setMode(mode === 'demo' ? 'personal' : 'demo')}>{mode === 'demo' ? 'Demo mode' : 'Personal mode'}<span className={mode === 'demo' ? 'toggle on' : 'toggle'} /></button></div></header>
-      <main><div className="page-heading"><div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div><button className="button primary" onClick={() => setModal('action')} disabled={!journal}><Plus size={16} />Log an action</button></div>
-        {mode === 'demo' && <div className="demo-banner"><span><span className="demo-tag">DEMO</span>You're exploring a sample journal. These actions are fictional.</span><button onClick={() => { setMode('personal'); setAnchor(new Date()); }}>Start my journal<ArrowRight size={14} /></button></div>}
+    <div className="main-shell"><header className="topbar"><div className="topbar-right"><span className="privacy-label"><LockKeyhole size={13} />Saved on this device</span><button className="mode-toggle" onClick={() => setMode(mode === 'demo' ? 'personal' : 'demo')}>{mode === 'demo' ? 'Demo mode' : 'Personal mode'}<span className={mode === 'demo' ? 'toggle on' : 'toggle'} /></button></div></header>
+      <main><div className="page-heading"><div><h1>{titles[page]}</h1></div>{['overview', 'timeline'].includes(page) && <button className="button primary" onClick={() => setModal('action')} disabled={!journal}><Plus size={16} />Log an action</button>}</div>
+        {mode === 'demo' && page !== 'profiles' && <div className="demo-banner"><span><span className="demo-tag">DEMO</span>You're exploring a sample journal. These actions are fictional.</span><button onClick={() => setMode('personal')}>Start my journal<ArrowRight size={14} /></button></div>}
         {error && <div className="error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16} /></button></div>}
         {!journal ? <div className="loading"><LoaderCircle className="spin" />Loading your journal…</div> : <div className="page-content" key={page}>
-          {['overview', 'timeline', 'wrapped'].includes(page) && (page !== 'timeline' || journalView === 'actions' || observedPeriod === 'period') && <div className="period-toolbar"><div className="date-controls"><button className="icon-button" aria-label="Previous period" onClick={() => moveDate(-1)}><ChevronLeft size={16} /></button><span><CalendarDays size={15} />{dateLabel}</span><button className="icon-button" aria-label="Next period" onClick={() => moveDate(1)}><ChevronRight size={16} /></button><button className="text-button today" onClick={() => setAnchor(new Date())}>Today</button></div><div className="segmented" aria-label="Time period">{['week', 'month', 'year'].map(p => <button aria-pressed={period === p} className={period === p ? 'selected' : ''} key={p} onClick={() => setPeriod(p)}>{p[0].toUpperCase() + p.slice(1)}</button>)}</div></div>}
+          {['overview', 'timeline', 'wrapped'].includes(page) && (page !== 'timeline' || journalView === 'actions' || observedPeriod === 'period') && <div className="period-toolbar"><div className="date-controls"><button className="icon-button" aria-label="Previous period" onClick={() => moveDate(-1)}><ChevronLeft size={16} /></button><span><CalendarDays size={15} />{dateLabel}</span><button className="icon-button" aria-label="Next period" disabled={page === 'wrapped' && range.start >= periodRange(new Date(), period).start} onClick={() => moveDate(1)}><ChevronRight size={16} /></button><button className="text-button today" onClick={() => setAnchor(new Date())}>Today</button></div><div className="segmented" aria-label="Time period">{(page === 'wrapped' ? ['day', 'week', 'month'] : ['week', 'month', 'year']).map(p => <button aria-pressed={period === p} className={period === p ? 'selected' : ''} key={p} onClick={() => selectPeriod(p)}>{p[0].toUpperCase() + p.slice(1)}</button>)}</div></div>}
           {page === 'overview' && <>
 
-            <div className="stats-row"><div><span>Actions logged<Sprout size={16} /></span><strong>{summary.total}<small>actions</small></strong><p>{period === 'month' ? `${previousCount} logged last month` : 'Self-reported actions in this period'}</p></div><div><span>Days active<CalendarDays size={16} /></span><strong>{summary.days}<small>days</small></strong><p>At your own pace.</p></div><div><span>Categories<Globe2 size={16} /></span><strong>{Object.values(summary.categories).filter(Boolean).length}<small>of 3 categories</small></strong><p>Transport, food, and reuse.</p></div></div>
-            <div className="overview-columns"><div className="main-column"><section className="section"><div className="section-heading"><div><h2>Your actions over time</h2><p>Your recorded actions, day by day.</p></div><span className="tiny-label">{summary.total} ACTIONS</span></div><TrendChart actions={actions} anchor={anchor} period={period} /><div className="chart-legend">{Object.entries(CATEGORIES).map(([id, c]) => <span key={id}><i style={{ background: c.color }} />{c.short}</span>)}</div></section><section className="section recent-section"><div className="section-heading"><h2>Recent moments</h2><button className="text-button" onClick={() => changePage('timeline')}>View journal<ArrowRight size={14} /></button></div><ActivityList actions={actions} onDelete={deleteAction} limit={4} /></section></div>
-              <aside className="insight-column"><div className="wrapped-teaser"><GrassDoodle /><h3>A little recap?</h3><p>Your logged habits, all in one place.</p><button onClick={() => changePage('wrapped')}>Open Climate Wrapped<ArrowUpRight size={16} /></button></div><details className="context-note"><summary>What do the numbers mean?</summary><p>Recorded actions, not an emissions estimate. Everyone has different access and circumstances.</p><button className="text-button" onClick={() => changePage('research')}>About the project<ArrowUpRight size={14} /></button></details></aside></div>
+            <div className="stats-row"><div><span>Actions logged<Sprout size={16} /></span><strong>{summary.total}<small>actions</small></strong></div><div><span>Days active<CalendarDays size={16} /></span><strong>{summary.days}<small>days</small></strong></div></div>
+            <div className="overview-columns"><div className="main-column"><section className="section"><div className="section-heading"><h2>Your actions over time</h2></div><TrendChart actions={actions} anchor={anchor} period={period} /></section><section className="section recent-section"><div className="section-heading"><h2>Recent actions</h2><button className="text-button" onClick={() => changePage('timeline')}>View journal<ArrowRight size={14} /></button></div><ActivityList actions={actions} onDelete={deleteAction} limit={4} /></section></div>
+              <aside className="insight-column"><div className="wrapped-teaser"><GrassDoodle /><h3>Climate Wrapped</h3><button onClick={() => changePage('wrapped')}>Open recap<ArrowUpRight size={16} /></button></div><details className="context-note"><summary>What do the numbers mean?</summary><p>Recorded actions, not an emissions estimate. Everyone has different access and circumstances.</p><button className="text-button" onClick={() => changePage('research')}>About the project<ArrowUpRight size={14} /></button></details></aside></div>
           </>}
           {page === 'timeline' && <section className="section timeline-section">
             <div className="journal-view-tabs" role="tablist" aria-label="Journal entries">
-              <button role="tab" aria-selected={journalView === 'actions'} onClick={() => { setJournalView('actions'); setQuery(''); setFilter('all'); }}>My actions</button>
-              <button role="tab" aria-selected={journalView === 'instagram'} onClick={() => { setJournalView('instagram'); setQuery(''); setFilter('all'); }}>Instagram observations ({observedPosts.length})</button>
+              <button role="tab" aria-selected={journalView === 'actions'} onClick={() => { setJournalView('actions'); setQuery(''); }}>My actions</button>
+              <button role="tab" aria-selected={journalView === 'instagram'} onClick={() => { setJournalView('instagram'); setQuery(''); }}>Instagram observations ({observedPosts.length})</button>
             </div>
             {journalView === 'instagram' && <div className="observation-controls"><p>Posts are grouped by their published date. Model findings need your review.</p><select aria-label="Observation dates" value={observedPeriod} onChange={e => setObservedPeriod(e.target.value)}><option value="all">All published dates</option><option value="period">Selected week, month, or year</option><option value="unknown">Published date unknown</option></select></div>}
-            <div className="journal-filters"><div className="filter-tabs">{['all', ...Object.keys(CATEGORIES)].map(c => <button className={filter === c ? 'active' : ''} key={c} onClick={() => setFilter(c)}>{c === 'all' ? journalView === 'actions' ? 'All actions' : 'All posts' : CATEGORIES[c].short}</button>)}</div><input type="search" aria-label={journalView === 'actions' ? 'Search actions' : 'Search Instagram observations'} placeholder="Search your journal…" value={query} onChange={e => setQuery(e.target.value)} /></div>
-            {journalView === 'actions' ? <ActivityList actions={actions.filter(a => (filter === 'all' || a.category === filter) && `${a.title} ${a.note}`.toLowerCase().includes(query.toLowerCase()))} onDelete={deleteAction} /> : <ObservationList posts={visibleObservations} />}
-            <div className="list-footer">{journalView === 'actions' ? `${actions.length} actions in this period` : `${visibleObservations.length} Instagram observations`}<span>One entry at a time.</span></div>
+            <div className="journal-filters"><input type="search" aria-label={journalView === 'actions' ? 'Search actions' : 'Search Instagram observations'} placeholder="Search your journal…" value={query} onChange={e => setQuery(e.target.value)} /></div>
+            {journalView === 'actions' ? <ActivityList actions={visibleActions} onDelete={deleteAction} /> : <ObservationList posts={visibleObservations} reviewed={reviewed} onReview={setReviewPost} />}
           </section>}
-          {page === 'wrapped' && <><section className="wrapped-poster"><div><span className="eyebrow">TOUCH GRASS / {dateLabel.toUpperCase()}</span><h2>Look at you<br /><em>growing.</em></h2><div className="wrapped-number">{summary.total}<span>positive actions<br />you chose to record.</span></div><p>{summary.days} days. {Object.values(summary.categories).filter(Boolean).length} categories. Your own pace.</p><span className="wrapped-wordmark">touch grass.</span></div><GrassDoodle compact /></section><div className="wrapped-breakdown">{Object.entries(CATEGORIES).map(([id, c]) => { const Icon = categoryIcons[id]; return <div key={id}><Icon size={24} /><strong>{summary.categories[id]}</strong><h3>{c.label}</h3><p>{id === 'transport' ? 'Journeys by foot, bike, bus, or train.' : id === 'food' ? 'Plant-based choices and food used well.' : 'Items reused, repaired, or found secondhand.'}</p></div>; })}</div><div className="recap-footer"><p>Based on your recorded actions. This recap does not estimate emissions saved.</p><button className="button secondary" onClick={() => { const safeLabel = dateLabel.replace(/[<>&"]/g, ''); const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350"><rect width="1080" height="1350" fill="#253e2e"/><circle cx="1000" cy="1100" r="420" fill="#385e44"/><g fill="#daf59f" font-family="Arial,sans-serif"><text x="90" y="130" font-size="42">touch grass.</text><text x="90" y="230" font-size="24">${safeLabel} · ${mode === 'demo' ? 'FICTIONAL DEMO' : 'MY CLIMATE WRAPPED'}</text><text x="90" y="400" font-size="80">Look at you</text><text x="90" y="500" font-size="80">growing.</text><text x="80" y="820" font-size="290">${summary.total}</text><text x="90" y="900" font-size="35">positive actions recorded</text><text x="90" y="1010" font-size="30">${summary.categories.transport} transport · ${summary.categories.food} food · ${summary.categories.circular} reuse &amp; repair</text><text x="90" y="1210" font-size="22">Self-reported actions. Not an emissions estimate.</text></g></svg>`; downloadFile('touch-grass-wrapped.svg', svg, 'image/svg+xml'); notify('Your recap is ready to save.'); }}><Download size={16} />Save my recap</button></div></>}
-          {page === 'profiles' && <><section className="profile-intro"><span className="category-icon transport"><Users size={24} /></span><div><h2>Start on an Instagram profile.</h2><p>Find the grass icon beside a profile photo. Analyze up to 10 posts and 20 photos, with captions. Results land in your journal.</p><div className="inline-actions"><a className="button primary" href="https://www.instagram.com/" target="_blank" rel="noreferrer">Open Instagram<ExternalLink size={15} /></a><button className="button secondary" onClick={() => changePage('settings')}>Configure OpenRouter<ArrowRight size={15} /></button></div></div></section><div className="section-heading profile-heading"><h2>Saved profile analyses</h2><span className="tiny-label">{profiles.length} PROFILES</span></div>{!profiles.length ? <div className="empty bordered"><Users size={32} /><h3>A profile is only part of the picture.</h3><p>Profile analyses saved from Instagram will appear here.<br />They stay separate from your personal action journal.</p></div> : profiles.map(profile => <section className="saved-profile section" key={profile.id}><div className="section-heading"><div><h2>@{profile.username}</h2><p>{new Date(profile.analyzedAt).toLocaleString()} · {profile.coverage?.postsRead || 0} posts read</p></div><button className="icon-button" aria-label={`Delete analysis for ${profile.username}`} onClick={() => deleteProfile(profile.id)}><Trash2 size={17} /></button></div><p>{profile.analysis.summary}</p><div className="profile-stats">{Object.entries(profile.analysis.categories).map(([c, value]) => <div key={c}><strong>{value.supportive}</strong><span>{CATEGORIES[c]?.short || c} signals</span><small>{value.uncertain} uncertain · {value.higherImpact} higher-impact signals</small></div>)}</div><p className="muted">{profile.analysis.limitations}</p></section>)}</>}
-          {page === 'research' && <div className="reading-layout"><section><span className="eyebrow">A SYNTHESIS PROJECT</span><h2>What changes when<br />climate actions become visible?</h2><p>Touch Grass explores how social visibility, positive reinforcement, and reflection affect climate motivation and judgments of others. It is a research prototype for voluntary participants.</p><h3>What the profile widget can tell you</h3><p>An image-capable model reads the first 10 accessible grid posts and their captions. It identifies visible actions in transport, food, and reuse. Pinned posts may come first. Images are resized before analysis, and individual post findings remain available for review.</p><h3>What it cannot tell you</h3><p>Posts are curated. A photograph cannot reveal an entire lifestyle, the reason for a trip, access to transport, or someone's values. Model findings are uncertain observations, not verified emissions estimates. No ranking of people or moral score is assigned.</p><h3>Why a positive action journal?</h3><p>Research on goal monitoring, changing social norms, and anticipated emotions informs the design. It does not establish that this extension changes real behavior. That question needs a participant study.</p><ul className="source-list"><li><a href="https://doi.org/10.1037/bul0000025" target="_blank" rel="noreferrer">Harkin et al., 2016<ArrowUpRight size={14} /></a><span>A meta-analysis of progress monitoring and goal attainment.</span></li><li><a href="https://doi.org/10.1177/0956797617719950" target="_blank" rel="noreferrer">Sparkman & Walton, 2017<ArrowUpRight size={14} /></a><span>Dynamic norms and sustainable behavior.</span></li><li><a href="https://doi.org/10.1371/journal.pone.0188781" target="_blank" rel="noreferrer">Schneider et al., 2017<ArrowUpRight size={14} /></a><span>Anticipated pride and guilt in environmental decisions.</span></li></ul></section><aside className="context-note"><Sprout size={25} /><h3>Built for reflection.</h3><p>Positive actions are worth noticing. So are the circumstances that make them possible.</p><p>The journal records actions without converting them into a person's worth.</p><span className="tiny-label">UC SAN DIEGO · SYNTHESIS</span></aside></div>}
-          {page === 'settings' && <div className="settings-layout"><section className="section"><h2>OpenRouter connection</h2><p>The local backend holds your API key. The extension never stores or displays it.</p><div className="code-block">OPENROUTER_API_KEY=your_key<br />OPENROUTER_MODEL=google/gemini-2.5-flash</div><p>Add these to <code>.env</code> in the project folder, then run <code>npm run api</code>. Choose an image-capable model available to your OpenRouter account.</p><div className="connection-row"><span className={`connection-dot ${health?.configured ? 'connected' : ''}`} /><span>{health?.checking ? 'Checking connection…' : health?.error || (health ? health.configured ? `Connected · ${health.model}` : 'Backend online. Set OPENROUTER_API_KEY in .env.' : 'Connection not checked')}</span><button className="button secondary" onClick={checkHealth} disabled={health?.checking}>Test connection</button></div><p className="form-note">Analysis sends compressed post photos and captions to OpenRouter and its selected model provider after you click Analyze. Your journal and source images are not uploaded automatically.</p></section><section className="section"><h2>Your data</h2><p>{mode === 'demo' ? 'You are viewing fictional demo data. Your personal journal is stored separately.' : 'Your actions and profile analyses are stored locally in this browser.'}</p><div className="settings-row"><div><strong>Export this journal</strong><p>Download actions, notes, and profile analyses as JSON.</p></div><button className="button secondary" onClick={exportJournal}><Download size={16} />Export JSON</button></div><div className="settings-row"><div><strong>Clear {mode === 'demo' ? 'demo' : 'personal'} data</strong><p>Removes all records in this mode. This cannot be undone.</p></div><button className="button danger" onClick={() => setModal('clear')}><Trash2 size={16} />Clear data</button></div></section><section className="section"><h2>Instagram permissions</h2><p>The widget runs only on Instagram. Collection starts when you click Analyze. It opens one temporary background tab at a time to read posts, then closes it. It does not read DMs, post, like, follow, or change your account.</p><p>In Zen, allow this extension to access Instagram through the browser's extension permissions if the widget does not appear. Instagram layout changes and access restrictions can interrupt collection.</p></section></div>}
+          {page === 'wrapped' && (recapEnded && summary.total > 0
+            ? <><section className="wrapped-poster"><div>
+                <span className="eyebrow">{dateLabel}{mode === 'demo' ? ' · Fictional demo' : ''}</span>
+                <h2>Look at you<br /><em>growing.</em></h2>
+                <div className="wrapped-number">{summary.total}<span>{summary.total === 1 ? 'action' : 'actions'} logged</span></div>
+                <p>{summary.days} active {summary.days === 1 ? 'day' : 'days'}</p>
+              </div><GrassDoodle compact /></section>
+              <section className="section recap-highlights"><h2>From your journal</h2><ul>{highlighted.map(action => <li key={action.id}>{action.title}</li>)}</ul></section>
+              <div className="recap-footer"><p>Based on the actions you recorded.</p><button className="button secondary" onClick={downloadRecap}><Download size={16} />Save my recap</button></div></>
+            : <section className="empty section"><Sparkles size={32} /><h2>{recapEnded ? 'No actions in this period' : 'This recap is still growing'}</h2>
+                <p>{recapEnded ? 'Log an action for this period to see a recap.' : 'Come back after this period ends to see a recap of the actions you logged.'}</p>
+                <button className="button secondary" onClick={() => setModal('action')}>Log an action</button>
+              </section>)}
+          {page === 'profiles' && <>
+            <Community />
+            <section className="profile-intro"><span className="category-icon transport"><Users size={24} /></span><div><h2>Scan an Instagram profile</h2><p>Look for Touch Grass beside the profile photo. Scan the grid, then review the suggestions in your journal.</p><a className="button primary" href="https://www.instagram.com/" target="_blank" rel="noreferrer">Open Instagram<ExternalLink size={15} /></a></div></section>
+            {mode === 'personal' && profiles.length > 0 && <section className="section"><h2>Scans saved on this device</h2>{profiles.map(profile => <article className="saved-profile" key={profile.id}><div className="section-heading"><div><h3>@{profile.username}</h3><p>{new Date(profile.analyzedAt).toLocaleDateString()}</p></div><button className="icon-button" aria-label={`Delete analysis for ${profile.username}`} onClick={() => deleteProfile(profile.id)}><Trash2 size={17} /></button></div><p>{profile.analysis.summary}</p></article>)}</section>}
+          </>}
+          {page === 'research' && <div className="reading-layout"><section><span className="eyebrow">A SYNTHESIS PROJECT</span><h2>What changes when<br />climate actions become visible?</h2><p>Touch Grass explores how social visibility, positive reinforcement, and reflection affect climate motivation and judgments of others. It is a research prototype for voluntary participants.</p><h3>What the profile widget can tell you</h3><p>An image-capable model reads the first 10 accessible grid posts and their captions. It suggests encouraging feedback on visible climate-friendly actions. Pinned posts may come first. Images are resized before analysis, and individual post findings remain available for review.</p><h3>What it cannot tell you</h3><p>Posts are curated. A photograph cannot reveal an entire lifestyle, the reason for a trip, access to transport, or someone's values. Model findings are uncertain observations, not verified emissions estimates. No ranking of people or moral score is assigned.</p><h3>Why a positive action journal?</h3><p>Research on goal monitoring, changing social norms, and anticipated emotions informs the design. It does not establish that this extension changes real behavior. That question needs a participant study.</p><ul className="source-list"><li><a href="https://doi.org/10.1037/bul0000025" target="_blank" rel="noreferrer">Harkin et al., 2016<ArrowUpRight size={14} /></a><span>A meta-analysis of progress monitoring and goal attainment.</span></li><li><a href="https://doi.org/10.1177/0956797617719950" target="_blank" rel="noreferrer">Sparkman & Walton, 2017<ArrowUpRight size={14} /></a><span>Dynamic norms and sustainable behavior.</span></li><li><a href="https://doi.org/10.1371/journal.pone.0188781" target="_blank" rel="noreferrer">Schneider et al., 2017<ArrowUpRight size={14} /></a><span>Anticipated pride and guilt in environmental decisions.</span></li></ul></section><aside className="context-note"><Sprout size={25} /><h3>Built for reflection.</h3><p>Positive actions are worth noticing. So are the circumstances that make them possible.</p><p>The journal records actions without converting them into a person's worth.</p><span className="tiny-label">UC SAN DIEGO · SYNTHESIS</span></aside></div>}
+          {page === 'settings' && <div className="settings-layout">{(extensionAPI || import.meta.env.DEV) && <section className="section"><h2>OpenRouter connection</h2><p>The local backend holds your API key. The extension never stores or displays it.</p><div className="code-block">OPENROUTER_API_KEY=your_key<br />OPENROUTER_MODEL=google/gemini-2.5-flash</div><p>Add these to <code>.env</code> in the project folder, then run <code>npm run api</code>. Choose an image-capable model available to your OpenRouter account.</p><div className="connection-row"><span className={`connection-dot ${health?.configured ? 'connected' : ''}`} /><span>{health?.checking ? 'Checking connection…' : health?.error || (health ? health.configured ? `Connected · ${health.model}` : 'Backend online. Set OPENROUTER_API_KEY in .env.' : 'Connection not checked')}</span><button className="button secondary" onClick={checkHealth} disabled={health?.checking}>Test connection</button></div><p className="form-note">Scanning sends new post photos and captions to OpenRouter. Publishing to the community requires a separate review.</p>
+          {extensionAPI && health?.publisher && <div className="settings-row"><div><strong>Community posts for @{health.publisher}</strong><p>Remove this profile and its photos from the shared site.</p></div><button className="button danger" onClick={() => setModal('unshare')}>Remove shared posts</button></div>}</section>}<section className="section"><h2>Your data</h2><p>{mode === 'demo' ? 'You are viewing fictional demo data. Your personal journal is stored separately.' : 'Your actions and profile analyses are stored locally in this browser.'}</p><div className="settings-row"><div><strong>Export this journal</strong><p>Download actions, notes, and profile analyses as JSON.</p></div><button className="button secondary" onClick={exportJournal}><Download size={16} />Export JSON</button></div>{mode === 'personal' && <div className="settings-row"><div><strong>Import personal actions</strong><p>Bring actions from your Touch Grass JSON export into this browser.</p></div><input type="file" aria-label="Import personal actions" accept=".json,application/json" onChange={importActions} /></div>}<div className="settings-row"><div><strong>Clear {mode === 'demo' ? 'demo' : 'personal'} data</strong><p>Removes all records in this mode. This cannot be undone.</p></div><button className="button danger" onClick={() => setModal('clear')}><Trash2 size={16} />Clear data</button></div></section><section className="section"><h2>Instagram permissions</h2><p>The widget runs only on Instagram. Collection starts when you click Scan. It opens one temporary background tab at a time to read posts, then closes it. It does not read DMs, post, like, follow, or change your account.</p><p>In Zen, allow this extension to access Instagram through the browser's extension permissions if the widget does not appear. Instagram layout changes and access restrictions can interrupt collection.</p></section></div>}
         </div>}
-        <footer className="app-footer"><span>touch grass.</span><span>A greener take on your feed.</span></footer>
+
       </main>
     </div>
     {toast && <div className="toast" role="status"><Check size={17} />{toast}</div>}
     {modal === 'action' && <Modal title="Log a small win" onClose={() => setModal(null)}><ActionForm onSave={addAction} onClose={() => setModal(null)} /></Modal>}
-    {modal === 'clear' && <Modal title="Clear this journal?" onClose={() => setModal(null)}><p>All {mode} actions and profile analyses will be deleted from this browser. Export a copy first if you want to keep them.</p><div className="inline-actions"><button className="button secondary" onClick={() => setModal(null)}>Keep my data</button><button className="button danger" onClick={async () => { try { await update(blankJournal()); setModal(null); notify('Journal cleared.'); } catch (e) { setError(e.message); } }}>Delete all {mode} data</button></div></Modal>}
+    {reviewPost && <Modal title="Review and log an action" onClose={() => setReviewPost(null)}><ActionForm post={reviewPost} onSave={addAction} onClose={() => setReviewPost(null)} /></Modal>}
+    {modal === 'unshare' && <Modal title="Remove all shared posts?" onClose={() => setModal(null)}>
+      <p>This removes the community profile and photos. Copies already saved by others may still exist.</p>
+      <button className="button danger" disabled={health.removing} onClick={async () => {
+        setHealth({ ...health, removing: true });
+        try { await unshareProfile(health.publisher); setModal(null); notify('Shared posts removed.'); }
+        catch (e) { setError(e.message); setModal(null); }
+        finally { setHealth({ ...health, removing: false }); }
+      }}>Remove shared posts</button>
+    </Modal>}
+    {modal === 'clear' && <Modal title="Clear this journal?" onClose={() => setModal(null)}><p>All {mode} actions and profile analyses will be deleted from this browser. Export a copy first if you want to keep them.</p><div className="inline-actions"><button className="button secondary" onClick={() => setModal(null)}>Keep my data</button><button className="button danger" onClick={async () => { try { await applyEdit({ type: 'clear' }); setModal(null); notify('Journal cleared.'); } catch (e) { setError(e.message); } }}>Delete all {mode} data</button></div></Modal>}
   </div>;
 }

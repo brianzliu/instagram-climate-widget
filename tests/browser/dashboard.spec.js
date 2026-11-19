@@ -24,6 +24,8 @@ test('journal actions persist and remain separate from the demo', async ({ page 
   await expect(page.getByText('Rode my bike', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Demo mode', exact: true }).click();
   await page.getByRole('button', { name: 'Climate Wrapped', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No actions in this period' })).toBeVisible();
+  await page.getByRole('button', { name: 'Personal mode' }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save my recap' }).click();
   expect((await download).suggestedFilename()).toBe('touch-grass-wrapped.svg');
   await page.reload(); await page.getByRole('button', { name: 'Start my journal' }).click();
@@ -52,6 +54,19 @@ test('Instagram observations use published dates, keep unknown dates visible, an
   await expect(page.locator('.observation-entry')).toHaveCount(1);
   await page.getByRole('button',{name:'Overview',exact:true}).click();
   await expect(page.locator('.stats-row > div:first-child strong')).toHaveText(/^0/);
+  await page.getByRole('button', { name: 'Climate Wrapped', exact: true }).click();
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No actions in this period' })).toBeVisible();
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await expect(page.getByRole('heading', { name: 'This recap is still growing' })).toBeVisible();
+  await page.getByRole('button', { name: 'Journal', exact: true }).click();
+  await page.getByLabel('Observation dates').selectOption('period');
+  await page.getByRole('button', { name: 'Review for my journal' }).click();
+  await page.getByRole('dialog').getByLabel('Action', { exact: true }).fill('Made a vegan lunch.');
+  await page.getByRole('button', { name: 'Confirm and save' }).click();
+  await expect(page.getByText('Saved to your actions')).toBeVisible();
+  await page.getByRole('tab', { name: 'My actions' }).click();
+  await expect(page.getByText('Made a vegan lunch.')).toBeVisible();
 });
 
 test('small screen layout stays within the viewport and supports keyboard dialogs', async ({ page }) => {
@@ -73,8 +88,24 @@ test('all journal screens render and controls change time periods', async ({ pag
   await expect(page.locator('.stats-row > div:first-child strong')).toHaveText(/^14/);
   await page.getByRole('button', { name: 'Year', exact: true }).click();
   await expect(page.getByRole('img', { name: /^year action chart/ })).toBeVisible();
-  for (const [button, heading] of [['Profile insights', 'Profile insights'], ['About the project', 'Behind Touch Grass'], ['Settings & data', 'Settings & data'], ['Climate Wrapped', 'Climate Wrapped']]) {
+  for (const [button, heading] of [['Community', 'Community'], ['About the project', 'Behind Touch Grass'], ['Settings & data', 'Settings & data'], ['Climate Wrapped', 'Climate Wrapped']]) {
     await page.getByRole('button', { name: button, exact: true }).click(); await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   }
   await page.screenshot({ path: 'test-results/wrapped-desktop.png', fullPage: true });
+});
+
+test('the separate community page shows owner-reviewed photos and actions', async ({ page }) => {
+  await page.route('http://127.0.0.1:8787/community', route => route.fulfill({ json: { profiles: ['outdoors'], next: null } }));
+  await page.route('http://127.0.0.1:8787/community/outdoors', route => route.fulfill({
+    json: { profile: { username: 'outdoors', posts: [{
+      id: 'park', url: 'https://www.instagram.com/p/park/', action: 'Volunteered at a park cleanup.',
+      images: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1sAAAAASUVORK5CYII='],
+    }] } },
+  }));
+  await page.goto('http://127.0.0.1:5173/#community');
+  await expect(page.getByRole('heading', { name: 'Community', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '@outdoors' }).click();
+  await expect(page.getByText('Volunteered at a park cleanup.')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Shared photo 1 of 1' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Original post' })).toHaveAttribute('href', 'https://www.instagram.com/p/park/');
 });

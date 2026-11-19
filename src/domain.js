@@ -11,6 +11,9 @@ export const ACTIONS = [
   { id: 'leftovers', category: 'food', label: 'Used up leftovers', caption: 'Made good use of food I had', word: 'leftover meals' },
   { id: 'reuse', category: 'circular', label: 'Chose to reuse', caption: 'Used something I already own', word: 'reuse moments' },
   { id: 'repair', category: 'circular', label: 'Repaired something', caption: 'Gave an item more life', word: 'repairs' },
+  { id: 'hike', label: 'Went for a hike' },
+  { id: 'recycle', label: 'Recycled something' },
+  { id: 'volunteer', label: 'Volunteered for the environment' },
   { id: 'thrift', category: 'circular', label: 'Bought secondhand', caption: 'Found something pre-loved', word: 'secondhand finds' },
 ];
 export function dateKey(date = new Date()) {
@@ -21,6 +24,10 @@ export function monthRange(anchor, offset = 0) {
   return { start: dateKey(date), end: dateKey(new Date(date.getFullYear(), date.getMonth() + 1, 1)) };
 }
 export function periodRange(anchor, period = 'month') {
+  if (period === 'day') {
+    const end = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 1);
+    return { start: dateKey(anchor), end: dateKey(end) };
+  }
   if (period === 'year') return { start: `${anchor.getFullYear()}-01-01`, end: `${anchor.getFullYear() + 1}-01-01` };
   if (period === 'week') {
     const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
@@ -49,10 +56,14 @@ export function chartBuckets(actions, anchor, period) {
     return { label: period === 'week' ? d.toLocaleDateString('en-US', { weekday: 'short' }) : String(i + 1), ...stats(actions.filter(a => a.date === dateKey(d))) };
   });
 }
-export function createAction({ kind, date, note = '', source = 'manual' }) {
+export function createAction({ kind, title, date, note = '', source = 'manual', sourcePostId }) {
   const action = ACTIONS.find(a => a.id === kind);
-  if (!action || !/^\d{4}-\d{2}-\d{2}$/.test(date) || dateKey(new Date(`${date}T12:00:00`)) !== date || date > dateKey()) throw new Error('Choose an action and a valid date up to today.');
-  return { id: crypto.randomUUID(), kind, category: action.category, title: action.label, date, note: note.trim().slice(0, 600), source };
+  const label = (kind === 'custom' ? title?.trim() : action?.label)?.slice(0, 600);
+  if (!label || !/^\d{4}-\d{2}-\d{2}$/.test(date) || dateKey(new Date(`${date}T12:00:00`)) !== date || date > dateKey()) {
+    throw new Error('Enter an action and a valid date up to today.');
+  }
+  return { id: crypto.randomUUID(), kind, title: label, date, note: note.trim().slice(0, 600), source,
+    ...(sourcePostId ? { sourcePostId } : {}) };
 }
 export function blankJournal() { return { version: 1, actions: [], observations: [], observedPosts: [], responses: [] }; }
 export function demoJournal(now = new Date()) {

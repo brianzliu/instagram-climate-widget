@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { blankJournal, chartBuckets, classifyCaption, createAction, dateKey, demoJournal, inRange, monthRange, periodRange, stats } from '../src/domain.js';
 
 test('ranges cross year and leap-day boundaries without dropping dates', () => {
+  assert.deepEqual(periodRange(new Date(2024, 1, 29), 'day'), { start: '2024-02-29', end: '2024-03-01' });
   assert.deepEqual(monthRange(new Date(2024, 1, 15)), { start: '2024-02-01', end: '2024-03-01' });
   assert.deepEqual(periodRange(new Date(2026, 0, 1), 'week'), { start: '2025-12-29', end: '2026-01-05' });
   assert.equal(chartBuckets([], new Date(2024, 1, 15), 'month').length, 29);
@@ -10,7 +11,7 @@ test('ranges cross year and leap-day boundaries without dropping dates', () => {
 });
 test('actions validate real dates and avoid invented emissions fields', () => {
   const a = createAction({ kind: 'bus', date: dateKey(), note: '  Campus bus  ' });
-  assert.equal(a.note, 'Campus bus'); assert.equal(a.category, 'transport'); assert.equal(a.emissions, undefined);
+  assert.equal(a.note, 'Campus bus'); assert.equal(a.title, 'Took public transport'); assert.equal(a.emissions, undefined);
   assert.throws(() => createAction({ kind: 'bus', date: '2025-02-30' }));
   assert.throws(() => createAction({ kind: 'invalid', date: dateKey() }));
   assert.throws(() => createAction({ kind: 'bus', date: '2099-01-01' }));
