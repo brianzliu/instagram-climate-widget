@@ -25,8 +25,7 @@ p { line-height: 1.7; }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { width: 224px; position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; padding: 30px 16px 0; background: #f1f4eb; border-right: 1px solid var(--line); z-index: 10; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 10px; white-space: nowrap; }
-.brand-mark, .brand-mark img { display: block; width: 34px; height: 34px; }
-.brand-name { font-size: 22px; font-weight: 750; letter-spacing: -1.1px; }
+.brand-name { font-size: 21px; font-weight: 750; letter-spacing: -1.1px; }
 .sidebar nav { margin-top: 43px; }
 .nav-item { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 11px; padding: 11px 14px; margin: 5px 0; border-radius: 12px; color: #6b7965; font-size: 12px; text-align: left; transition: background .15s, color .15s; }
 .nav-item:hover { background: #e7eddd; color: var(--green); }
@@ -243,7 +242,7 @@ textarea { resize: vertical; line-height: 1.7; }
 @media (min-width: 1500px) { main { padding: 45px 56px 0; } .chart-wrap { height: 230px; } }
 @media (max-width: 1100px) {
   .sidebar { width: 196px; padding-left: 12px; padding-right: 12px; }
-  .brand { gap: 7px; padding: 0 6px; } .brand-name { font-size: 20px; } .brand-mark, .brand-mark img { width: 30px; height: 30px; }
+  .brand { gap: 7px; padding: 0 6px; } .brand-name { font-size: 20px; } .brand-mascot { width: 49px; }
   .main-shell { margin-left: 196px; width: calc(100% - 196px); }
   main { padding: 30px 28px 0; } .topbar { padding: 0 28px; } .privacy-label { display: none; }
   .overview-columns { grid-template-columns: minmax(0, 1fr) 175px; gap: 28px; }
@@ -253,7 +252,7 @@ textarea { resize: vertical; line-height: 1.7; }
 }
 @media (max-width: 850px) {
   .sidebar { width: 70px; padding: 24px 8px 0; align-items: center; }
-  .brand { padding: 0; } .brand-name { display: none; } .brand-mark, .brand-mark img { width: 34px; height: 34px; }
+  .brand { padding: 0; } .brand-name { display: none; } .brand-mascot { width: 42px; }
   .sidebar nav { width: 100%; margin-top: 31px; } .nav-item, .sidebar-bottom .nav-item { justify-content: center; font-size: 0; gap: 0; padding: 13px; }
   .sidebar-bottom { width: 100%; } .local-status { justify-content: center; padding: 20px 0; } .local-status > div { display: none; }
   .main-shell { margin-left: 70px; width: calc(100% - 70px); }
@@ -268,7 +267,7 @@ textarea { resize: vertical; line-height: 1.7; }
   .toast { left: calc(50% + 35px); }
 }
 @media (max-width: 570px) {
-  .sidebar { width: 58px; padding-left: 5px; padding-right: 5px; } .brand-mark, .brand-mark img { width: 31px; height: 31px; }
+  .sidebar { width: 58px; padding-left: 5px; padding-right: 5px; }
   .main-shell { margin-left: 58px; width: calc(100% - 58px); }
   main { padding: 25px 17px 0; } .topbar { padding: 0 17px; } .workspace-label { font-size: 9px; } .topbar-right { gap: 0; } .mode-toggle { font-size: 9px; gap: 6px; }
   .page-heading { gap: 12px; align-items: start; margin-bottom: 22px; } .page-heading h1 { font-size: 27px; letter-spacing: -1px; } .page-heading p { font-size: 11px; max-width: 180px; }
@@ -299,7 +298,7 @@ textarea { resize: vertical; line-height: 1.7; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .brand { min-height: 76px; }
-.brand-wordmark { display: block; width: 146px; max-width: 100%; height: auto; }
+.brand-mascot { display: block; flex-shrink: 0; width: 57px; max-width: 100%; height: auto; }
 .topbar { justify-content: flex-end; }
 main { padding-bottom: 42px; }
 .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }

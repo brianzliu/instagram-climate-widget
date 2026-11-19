@@ -6,7 +6,7 @@ button:disabled { cursor: default; opacity: .6; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #7f9d52; outline-offset: 3px; }
 .widget { border: 1px solid #e0e7d7; border-radius: 18px; background: #fafbf7; box-shadow: 0 8px 32px #273c2014; overflow: hidden; }
 .widget-header { display: flex; align-items: center; gap: 8px; padding: 14px 17px; }
-.grass-logo, .grass-logo svg { display: block; width: 29px; height: 29px; flex-shrink: 0; }
+.grass-logo { display: block; width: 29px; height: 29px; flex-shrink: 0; }
 .wordmark { font-size: 19px; font-weight: 750; letter-spacing: -.8px; }
 .close { margin-left: auto; padding: 0 2px; color: #98a58a; font-size: 20px; line-height: 1; border-radius: 4px; }
 .close:hover { color: #294b35; }
@@ -52,7 +52,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .warnings, .collection-note { font-size: 9px !important; color: #a08a5e !important; margin: 9px 0 !important; }
 .limit-note { border-top: 1px solid #e4ecd7; padding-top: 12px; font-size: 9px !important; margin-top: 14px !important; }
 .collapsed { display: flex; align-items: center; gap: 8px; padding: 7px 11px 7px 7px; background: #fafbf7; border: 1px solid #e1e8d6; border-radius: 14px; box-shadow: 0 4px 16px #273c2010; font-size: 13px; font-weight: 650; letter-spacing: -.4px; white-space: nowrap; }
-.collapsed .grass-logo, .collapsed .grass-logo svg { width: 25px; height: 25px; }
+.collapsed .grass-logo { width: 25px; height: 25px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 

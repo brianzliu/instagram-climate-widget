@@ -2,7 +2,7 @@ import { profileFromDocument, gridPosts } from './collector.js';
 import { compressImage } from './compress.js';
 import { gridRevision, postRevision } from '../src/post-revision.js';
 import styles from './widget.css';
-import grassLogo from '../public/favicon.svg';
+import grassLogo from '../assets/icons/icon48.png';
 import { MAX_ANALYSIS_PHOTOS, MAX_PHOTOS_PER_POST, MAX_PROFILE_POSTS } from '../src/analysis-limits.js';
 
 const api = globalThis.browser || chrome;
@@ -16,8 +16,8 @@ async function message(data) { const response = await api.runtime.sendMessage(da
 
 function shell(body) {
   shadow.innerHTML = `<style>${styles}</style>${collapsed
-    ? `<button class="collapsed" id="expand" aria-label="Open Touch Grass"${sharedProfile?.posts?.length ? ' aria-describedby="shared-tooltip"' : ''}><span class="grass-logo">${grassLogo}</span>Touch Grass</button>${sharedProfile?.posts?.length ? `<div id="shared-tooltip" class="profile-tooltip" role="tooltip">${escape(sharedSummary())}</div>` : ''}`
-    : `<div class="widget"><div class="widget-header"><span class="grass-logo" aria-hidden="true">${grassLogo}</span><span class="wordmark">Touch Grass</span><button class="close" id="collapse" aria-label="Collapse climate widget">×</button></div><div class="body">${body}</div><div class="foot"><button class="text-link" id="journal">My journal ↗</button></div></div>`}`;
+    ? `<button class="collapsed" id="expand" aria-label="Open Touch Grass"${sharedProfile?.posts?.length ? ' aria-describedby="shared-tooltip"' : ''}><img class="grass-logo" src="${grassLogo}" alt="">Touch Grass</button>${sharedProfile?.posts?.length ? `<div id="shared-tooltip" class="profile-tooltip" role="tooltip">${escape(sharedSummary())}</div>` : ''}`
+    : `<div class="widget"><div class="widget-header"><img class="grass-logo" src="${grassLogo}" alt=""><span class="wordmark">Touch Grass</span><button class="close" id="collapse" aria-label="Collapse climate widget">×</button></div><div class="body">${body}</div><div class="foot"><button class="text-link" id="journal">My journal ↗</button></div></div>`}`;
   shadow.getElementById('collapse')?.addEventListener('click', () => { collapsed = true; render(); });
   shadow.getElementById('expand')?.addEventListener('click', () => { collapsed = false; render(); });
   shadow.getElementById('journal')?.addEventListener('click', () => message({ type: 'OPEN_JOURNAL' }).catch(showError));
