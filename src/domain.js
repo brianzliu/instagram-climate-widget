@@ -1,3 +1,5 @@
+import { comparisonDetails } from './climate-facts.js';
+
 export const CATEGORIES = {
   transport: { label: 'Getting around', short: 'Transport', color: '#426a53' },
   food: { label: 'Eating thoughtfully', short: 'Food', color: '#a5b381' },
@@ -56,14 +58,15 @@ export function chartBuckets(actions, anchor, period) {
     return { label: period === 'week' ? d.toLocaleDateString('en-US', { weekday: 'short' }) : String(i + 1), ...stats(actions.filter(a => a.date === dateKey(d))) };
   });
 }
-export function createAction({ kind, title, date, note = '', source = 'manual', sourcePostId }) {
+export function createAction({ kind, title, date, note = '', source = 'manual', sourcePostId, comparisonTopic, tripMiles }) {
   const action = ACTIONS.find(a => a.id === kind);
   const label = (kind === 'custom' ? title?.trim() : action?.label)?.slice(0, 600);
   if (!label || !/^\d{4}-\d{2}-\d{2}$/.test(date) || dateKey(new Date(`${date}T12:00:00`)) !== date || date > dateKey()) {
     throw new Error('Enter an action and a valid date up to today.');
   }
   return { id: crypto.randomUUID(), kind, title: label, date, note: note.trim().slice(0, 600), source,
-    ...(sourcePostId ? { sourcePostId } : {}) };
+    ...(sourcePostId ? { sourcePostId } : {}),
+    ...comparisonDetails({ kind }, comparisonTopic, tripMiles, { strict: true }) };
 }
 export function blankJournal() { return { version: 1, actions: [], observations: [], observedPosts: [], responses: [] }; }
 export function demoJournal(now = new Date()) {
@@ -75,7 +78,7 @@ export function demoJournal(now = new Date()) {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1 + Math.floor(i * maxDay / count));
       const kind = kinds[(i + (offset + 2) * 3) % kinds.length];
       const action = ACTIONS.find(a => a.id === kind);
-      actions.push({ id: `demo-${offset}-${i}`, kind, title: action.label, category: action.category, date: dateKey(d), source: i % 4 === 0 ? 'instagram' : 'manual', note: ['The campus bus made this an easy choice.', 'A small habit I want to keep.', '', 'Made time to try something different.'][i % 4] });
+      actions.push({ id: `demo-${offset}-${i}`, kind, title: action.label, category: action.category, date: dateKey(d), source: i % 4 === 0 ? 'instagram' : 'manual', ...(['bus', 'bike', 'walk'].includes(kind) ? { tripMiles: [1.2, 2.5, 4.6, 8.1, 0.8][i % 5] } : {}), note: ['The campus bus made this an easy choice.', 'A small habit I want to keep.', '', 'Made time to try something different.'][i % 4] });
     }
   }
   return { ...blankJournal(), actions };

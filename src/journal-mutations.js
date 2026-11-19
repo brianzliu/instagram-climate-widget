@@ -1,4 +1,5 @@
 import { blankJournal, dateKey } from './domain.js';
+import { comparisonDetails } from './climate-facts.js';
 import { isCompressedPhoto, photoLimit } from './action-photos.js';
 
 export function editJournal(journal, edit) {
@@ -26,6 +27,14 @@ export function editJournal(journal, edit) {
     return { ...journal, actions: journal.actions.filter(action => action.id !== edit.id),
       nextSteps: steps.map(step => step.actionId === edit.id ? { id: step.id, title: step.title } : step) };
   }
+  if (edit.type === 'editComparison') {
+    if (!journal.actions.some(action => action.id === edit.id)) throw new Error('This action is no longer in your journal.');
+    return { ...journal, actions: journal.actions.map(action => {
+      if (action.id !== edit.id) return action;
+      const { comparisonTopic, tripMiles, ...entry } = action;
+      return { ...entry, ...comparisonDetails(entry, edit.topic, edit.miles, { strict: true }) };
+    }) };
+  }
   if (edit.type === 'addAction') {
     const action = edit.action;
     if (action.sourcePostId && journal.actions.some(saved => saved.sourcePostId === action.sourcePostId)) {
@@ -48,10 +57,11 @@ export function editJournal(journal, edit) {
       if (ids.has(action.id) || (sourcePostId && posts.has(sourcePostId))) return [];
       ids.add(action.id);
       if (sourcePostId) posts.add(sourcePostId);
-      return [{ id: action.id, title: action.title.trim().slice(0, 600), date: action.date,
+      return [{ id: action.id, ...(typeof action.kind === 'string' ? { kind: action.kind.slice(0, 40) } : {}), title: action.title.trim().slice(0, 600), date: action.date,
         note: typeof action.note === 'string' ? action.note.slice(0, 600) : '',
         source: ['instagram', 'next-step'].includes(action.source) ? action.source : 'manual',
         ...(sourcePostId ? { sourcePostId } : {}),
+        ...comparisonDetails(action, action.comparisonTopic, action.tripMiles),
         ...(Array.isArray(action.photos) ? { photos: action.photos.slice(0, photoLimit).filter(isCompressedPhoto) } : {}) }];
     });
     return { ...journal, actions: [...journal.actions, ...actions] };
