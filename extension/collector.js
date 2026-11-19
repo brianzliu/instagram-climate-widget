@@ -74,7 +74,8 @@ export async function readPostPage({ maxPhotos = 2 } = {}) {
   if (hasCarousel && images.size < 2) warnings.push('Only the visible carousel cover could be read.');
   if (isVideo) warnings.push('Video cover analyzed only. Video playback and audio are not analyzed.');
   if (!images.size) warnings.push('No accessible post photos found.');
-  return { caption: caption.slice(0, 10000), captionSource, publishedAt, publishedDate, dateSource, images: [...images.values()].slice(0, photoLimit), warnings, isVideo };
+  const editedAt = article.querySelector('meta[itemprop="dateModified"], time[itemprop="dateModified"]');
+  return { editedAt: editedAt?.getAttribute('content') || editedAt?.getAttribute('datetime') || null, caption: caption.slice(0, 10000), captionSource, publishedAt, publishedDate, dateSource, images: [...images.values()].slice(0, photoLimit), warnings, isVideo };
 }
 
 export function profileFromDocument(doc, pathname) {
@@ -88,15 +89,16 @@ export function profileFromDocument(doc, pathname) {
   return { username: match[1], header, photo };
 }
 
-export function gridPosts(doc) {
+export function gridPosts(doc, limit = 10) {
   const seen = new Set(); const posts = [];
   // Preserve visual grid order. Pinned posts intentionally count toward the first 10.
   for (const link of doc.querySelectorAll('main a[href]')) {
     const match = /^\/(?:[\w.]+\/)?(p|reel)\/([A-Za-z0-9_-]+)\/?/.exec(link.getAttribute('href'));
-    if (!match || !link.querySelector('img') || seen.has(match[2])) continue;
+    const img = link.querySelector('img');
+    if (!match || !img || seen.has(match[2])) continue;
     seen.add(match[2]);
-    posts.push({ url: `https://www.instagram.com/${match[1]}/${match[2]}/`, preview: link.querySelector('img').currentSrc || link.querySelector('img').src });
-    if (posts.length === 10) break;
+    posts.push({ url: `https://www.instagram.com/${match[1]}/${match[2]}/`, preview: img.currentSrc || img.src, alt: img.alt, edited: !!link.querySelector('[aria-label="Edited"]'), link });
+    if (posts.length === limit) break;
   }
   return posts;
 }
