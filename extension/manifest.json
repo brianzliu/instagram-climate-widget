@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Touch Grass",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Scan Instagram posts for climate-friendly actions, review your journal, and see your Climate Wrapped.",
   "permissions": [
     "storage",

@@ -1,5 +1,11 @@
 # MVP validation
 
+## Touch Grass 0.5
+
+All 23 unit and integration tests and 17 browser tests passed. Both extension packages built. The browser suite checks that the comparison distinguishes fictional entries, uses only trips with recorded distances, updates after editing, and appears in the matching Climate Wrapped period. The mobile comparison layout was inspected. Unit tests check the three-mile boundary and preservation of comparison fields through journal import.
+
+The travel comparison uses a historical U.S. benchmark. The journal is self-reported and can omit trips. Food and waste figures provide context for logged actions and are scoped to the original studies.
+
 ## Touch Grass 0.4
 
 The browser suite covers private photo attachments, completing a private change plan, and receiving credit in Climate Wrapped. A hosted test runs the built web app against a local community server and uses two independent browser sessions to publish a photo, like an action, and leave a comment. Integration tests check that retries do not duplicate reactions or comments, and that participants can remove only their own content or comments on their own posts.

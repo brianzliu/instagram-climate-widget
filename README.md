@@ -17,7 +17,7 @@ For new scans, set `OPENROUTER_API_KEY` and your image-capable model in `.env`. 
 - **Zen and Firefox.** Open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/firefox/manifest.json`. Enable the extension's Instagram access if prompted. Load it again after a browser restart. The release XPI is unsigned.
 - **Comet and Chromium.** Open `chrome://extensions`, enable developer mode, and load the entire `dist/chromium` folder as an unpacked extension.
 
-Version 0.4 retains the original Firefox add-on ID and storage keys. Reload the same installed extension to keep your journal.
+Version 0.5 retains the original Firefox add-on ID and storage keys. Reload the same installed extension to keep your journal.
 
 ## Scan, review, recap
 
@@ -27,6 +27,14 @@ Version 0.4 retains the original Firefox add-on ID and storage keys. Reload the 
 4. Open **Climate Wrapped** and choose **Day**, **Week**, or **Month**. Each selection opens the most recently completed period in your local time. Weeks start Monday. A recap appears after the period closes if it contains at least one logged action. You can revisit past recaps and save them as images. Recaps count recorded actions, with no emissions estimate.
 
 Use `npm run dev` for the web app on `http://127.0.0.1:5173`. The browser version opens a clearly labelled fictional demo. Use **Start my journal** for an empty personal journal. The extension and the website have separate private storage. To bring actions from the extension to the website, export your personal journal JSON in **Settings & data** and use **Import personal actions** on the site. Import restores actions, including actions you confirmed from Instagram. Scan evidence remains in the original journal.
+
+## Compare your actions with climate facts
+
+**Your actions in context** appears in Overview, Journal, and Climate Wrapped. It uses only the actions you logged in the selected period. Built-in actions link to relevant sources automatically. Use the chart icon on a journal entry to change its comparison or choose a fact for a custom action.
+
+Enter an optional one-way distance when logging a trip. The chart compares the share of your measured trips under three miles with the U.S. share from 2021. Trips with no distance still count as actions. They are excluded from the distance comparison. The food, recycling, and electronics charts show published findings alongside your own action count. Your journal does not estimate emissions for those actions.
+
+Sources and study years appear below each chart. Distances and comparison choices stay with your private journal. They are included if you export your journal and are preserved when you import those actions.
 
 ## Add your own photos and actions
 
