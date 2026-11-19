@@ -25,6 +25,7 @@ p { line-height: 1.7; }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { width: 224px; position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; padding: 30px 16px 0; background: #f1f4eb; border-right: 1px solid var(--line); z-index: 10; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 10px; white-space: nowrap; }
+.brand-mascot { display: block; flex-shrink: 0; width: 57px; max-width: 100%; height: auto; }
 .brand-name { font-size: 21px; font-weight: 750; letter-spacing: -1.1px; }
 .sidebar nav { margin-top: 43px; }
 .nav-item { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 11px; padding: 11px 14px; margin: 5px 0; border-radius: 12px; color: #6b7965; font-size: 12px; text-align: left; transition: background .15s, color .15s; }
@@ -298,7 +299,6 @@ textarea { resize: vertical; line-height: 1.7; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .brand { min-height: 76px; }
-.brand-mascot { display: block; flex-shrink: 0; width: 57px; max-width: 100%; height: auto; }
 .topbar { justify-content: flex-end; }
 main { padding-bottom: 42px; }
 .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
