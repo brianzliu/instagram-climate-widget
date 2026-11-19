@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Download, ExternalLink, HelpCircle, LayoutDashboard, Leaf, List, LoaderCircle, LockKeyhole, Plus, Settings2, Sparkles, Sprout, Trash2, Users, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, Download, ExternalLink, HelpCircle, LayoutDashboard, Leaf, List, LoaderCircle, LockKeyhole, Plus, Settings2, Sparkles, Sprout, Trash2, Users, X } from 'lucide-react';
 import { ACTIONS, chartBuckets, createAction, dateKey, inRange, periodRange, stats } from './domain.js';
 import { downloadFile, extensionAPI, JOURNAL_KEYS, loadJournal, changeJournal } from './storage.js';
 import { journalObservations } from './journal-observations.js';
 import { Community, unshareProfile } from './Community.jsx';
 import { ActionPhotos, PhotoPicker } from './PhotoPicker.jsx';
+import { ClimateComparison, ComparisonFields, EditComparison } from './ClimateComparison.jsx';
+import { comparisonTopic } from './climate-facts.js';
 import { NextSteps, PlanForm } from './NextSteps.jsx';
 
 const nav = [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'timeline', label: 'Journal', icon: List }, { id: 'wrapped', label: 'Climate Wrapped', icon: Sparkles }, { id: 'profiles', label: 'Community', icon: Users }];
@@ -48,6 +50,9 @@ function Modal({ title, children, onClose }) {
 
 function ActionForm({ onSave, onClose, post, plan, allowPhotos = false }) {
   const [kind, setKind] = useState(post || plan ? 'custom' : 'bus');
+  const [customTopic, setCustomTopic] = useState('');
+  const [miles, setMiles] = useState('');
+  const topic = kind === 'custom' ? customTopic : comparisonTopic({ kind });
   const [title, setTitle] = useState(post?.finding?.observation.slice(0, 600) || '');
   const [date, setDate] = useState(post?.date || (post ? '' : dateKey()));
   const [note, setNote] = useState('');
@@ -60,27 +65,30 @@ function ActionForm({ onSave, onClose, post, plan, allowPhotos = false }) {
     if (preparing) return;
     setSaving(true);
     try {
-      const action = createAction({ kind, title, date, note, source: post ? 'instagram' : plan ? 'next-step' : 'manual', sourcePostId: post?.id });
+      const action = createAction({ kind, title, date, note, source: post ? 'instagram' : plan ? 'next-step' : 'manual', sourcePostId: post?.id,
+        comparisonTopic: kind === 'custom' ? customTopic : undefined,
+        tripMiles: topic === 'travel' && miles !== '' ? Number(miles) : undefined });
       await onSave(photos.length ? { ...action, photos } : action);
       onClose();
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
   }}>
     {post ? <p>Review the suggested description and date. Save it only if you took this action.</p>
-      : plan ? <p>What did you do when you tried this change?</p> : <label>What did you do?<select value={kind} onChange={e => setKind(e.target.value)}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}<option value="custom">Write my own</option></select></label>}
+      : plan ? <p>What did you do when you tried this change?</p> : <label>What did you do?<select value={kind} onChange={e => { setKind(e.target.value); setMiles(''); }}>{ACTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}<option value="custom">Write my own</option></select></label>}
     {kind === 'custom' && <label>Action<input required maxLength={600} value={title} onChange={e => setTitle(e.target.value)} /></label>}
     <label>When?<input type="date" required max={dateKey()} value={date} onChange={e => setDate(e.target.value)} /></label>
     {!post && <label>Notes <span className="muted">optional</span><textarea maxLength={600} rows={3} value={note} placeholder="What made this possible?" onChange={e => setNote(e.target.value)} /></label>}
+    <ComparisonFields topic={topic} setTopic={kind === 'custom' ? setCustomTopic : undefined} miles={miles} setMiles={setMiles} />
     {allowPhotos && !post && <PhotoPicker images={photos} onChange={setPhotos} onBusy={setPreparing} />}
     {error && <p role="alert" className="error">{error}</p>}
     <button disabled={saving || preparing} className="button primary full">{saving ? 'Saving…' : post ? 'Confirm and save' : 'Save action'}<Check size={16} /></button>
   </form>;
 }
 
-function ActivityList({ actions, onDelete, limit }) {
+function ActivityList({ actions, onDelete, onCompare, limit }) {
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date));
   if (!sorted.length) return <div className="empty"><Sprout size={32} /><h3>Your journal has room to grow.</h3><p>Log an action to start seeing your habits over time.</p></div>;
-  return <div className="activity-list">{sorted.slice(0, limit).map(a => <div className="activity" key={a.id}><span className="category-icon transport"><Sprout size={19} /></span><div className="activity-main"><strong>{a.title}</strong>{a.note && <p>{a.note}</p>}<ActionPhotos images={a.photos} label="Journal photo" className="journal-photos" /></div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : a.source === 'next-step' ? 'Change tried' : 'Self-reported'}</small></div><button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>)}</div>;
+  return <div className="activity-list">{sorted.slice(0, limit).map(a => <div className="activity" key={a.id}><span className="category-icon transport"><Sprout size={19} /></span><div className="activity-main"><strong>{a.title}</strong>{a.note && <p>{a.note}</p>}<ActionPhotos images={a.photos} label="Journal photo" className="journal-photos" /></div><div className="activity-date"><span>{new Date(`${a.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><small>{a.source === 'instagram' ? 'From Instagram' : a.source === 'next-step' ? 'Change tried' : 'Self-reported'}</small></div>{onCompare && <button className="icon-button activity-compare" aria-label={`Edit climate comparison for ${a.title}`} title="Edit climate comparison" onClick={() => onCompare(a)}><BarChart3 size={15} /></button>}<button className="icon-button delete-action" aria-label={`Delete ${a.title} on ${a.date}`} onClick={() => onDelete(a.id)}><Trash2 size={15} /></button></div>)}</div>;
 }
 
 function TrendChart({ actions, anchor, period }) {
@@ -107,6 +115,7 @@ function ObservationList({ posts, reviewed, onReview, onPlan }) {
 export default function App() {
   const [page, setPage] = useState('overview'); const [mode, setMode] = useState(extensionAPI ? 'personal' : 'demo'); const [journal, setJournal] = useState(null); const [anchor, setAnchor] = useState(new Date()); const [period, setPeriod] = useState('month'); const [modal, setModal] = useState(null); const [toast, setToast] = useState(''); const [error, setError] = useState(''); const [query, setQuery] = useState(''); const [health, setHealth] = useState(null);
   const toastTimer = useRef();
+  const [compareAction, setCompareAction] = useState(null);
   const [reviewPost, setReviewPost] = useState(null);
   const [planIdea, setPlanIdea] = useState('');
   const [communityAccount, setCommunityAccount] = useState();
@@ -222,7 +231,7 @@ export default function App() {
           {page === 'overview' && <>
 
             <div className="stats-row"><div><span>Actions logged<Sprout size={16} /></span><strong>{summary.total}<small>actions</small></strong></div><div><span>Days active<CalendarDays size={16} /></span><strong>{summary.days}<small>days</small></strong></div></div>
-            <div className="overview-columns"><div className="main-column"><section className="section"><div className="section-heading"><h2>Your actions over time</h2></div><TrendChart actions={actions} anchor={anchor} period={period} /></section><section className="section recent-section"><div className="section-heading"><h2>Recent actions</h2><button className="text-button" onClick={() => changePage('timeline')}>View journal<ArrowRight size={14} /></button></div><ActivityList actions={actions} onDelete={deleteAction} limit={4} /></section></div>
+            <div className="overview-columns"><div className="main-column"><section className="section"><div className="section-heading"><h2>Your actions over time</h2></div><TrendChart actions={actions} anchor={anchor} period={period} /></section><ClimateComparison actions={actions} demo={mode === 'demo'} /><section className="section recent-section"><div className="section-heading"><h2>Recent actions</h2><button className="text-button" onClick={() => changePage('timeline')}>View journal<ArrowRight size={14} /></button></div><ActivityList actions={actions} onDelete={deleteAction} onCompare={mode === 'personal' ? setCompareAction : undefined} limit={4} /></section></div>
               <aside className="insight-column"><div className="wrapped-teaser"><GrassDoodle /><h3>Climate Wrapped</h3><button onClick={() => changePage('wrapped')}>Open recap<ArrowUpRight size={16} /></button></div><details className="context-note"><summary>What do the numbers mean?</summary><p>Recorded actions, not an emissions estimate. Everyone has different access and circumstances.</p><button className="text-button" onClick={() => changePage('research')}>About the project<ArrowUpRight size={14} /></button></details></aside></div>
           </>}
           {page === 'timeline' && <section className="section timeline-section">
@@ -235,8 +244,9 @@ export default function App() {
             {journalView === 'plans'
               ? mode === 'personal' && <NextSteps steps={journal.nextSteps || []} onPlan={makePlan} onComplete={setCompleteStep} onRemove={removePlan} />
               : <><div className="journal-filters"><input type="search" aria-label={journalView === 'actions' ? 'Search actions' : 'Search Instagram observations'} placeholder="Search your journal…" value={query} onChange={e => setQuery(e.target.value)} /></div>
-                {journalView === 'actions' ? <ActivityList actions={visibleActions} onDelete={deleteAction} /> : <ObservationList posts={visibleObservations} reviewed={reviewed} onReview={setReviewPost} onPlan={mode === 'personal' ? makePlan : null} />}</>}
+                {journalView === 'actions' ? <ActivityList actions={visibleActions} onDelete={deleteAction} onCompare={mode === 'personal' ? setCompareAction : undefined} /> : <ObservationList posts={visibleObservations} reviewed={reviewed} onReview={setReviewPost} onPlan={mode === 'personal' ? makePlan : null} />}</>}
           </section>}
+          {page === 'timeline' && journalView === 'actions' && <ClimateComparison actions={actions} demo={mode === 'demo'} />}
           {page === 'wrapped' && (recapEnded && summary.total > 0
             ? <><section className="wrapped-poster"><div>
                 <span className="eyebrow">{dateLabel}{mode === 'demo' ? ' · Fictional demo' : ''}</span>
@@ -246,7 +256,7 @@ export default function App() {
                 {changesTried > 0 && <p>{changesTried} {changesTried === 1 ? 'change tried' : 'changes tried'}</p>}
               </div><GrassDoodle compact /></section>
               <section className="section recap-highlights"><h2>From your journal</h2><ul>{highlighted.map(action => <li key={action.id}>{action.title}</li>)}</ul></section>
-              <div className="recap-footer"><p>Based on the actions you recorded.</p><button className="button secondary" onClick={downloadRecap}><Download size={16} />Save my recap</button></div></>
+              <ClimateComparison actions={actions} demo={mode === 'demo'} /><div className="recap-footer"><p>Based on the actions you recorded.</p><button className="button secondary" onClick={downloadRecap}><Download size={16} />Save my recap</button></div></>
             : <section className="empty section"><Sparkles size={32} /><h2>{recapEnded ? 'No actions in this period' : 'This recap is still growing'}</h2>
                 <p>{recapEnded ? 'Log an action for this period to see a recap.' : 'Come back after this period ends to see a recap of the actions you logged.'}</p>
                 <button className="button secondary" onClick={() => setModal('action')}>Log an action</button>
@@ -265,6 +275,13 @@ export default function App() {
     </div>
     {toast && <div className="toast" role="status"><Check size={17} />{toast}</div>}
     {modal === 'action' && <Modal title="Log a small win" onClose={() => setModal(null)}><ActionForm allowPhotos={mode === 'personal'} onSave={addAction} onClose={() => setModal(null)} /></Modal>}
+    {compareAction && <Modal title="Edit climate comparison" onClose={() => setCompareAction(null)}>
+      <EditComparison action={compareAction} onSave={async (topic, miles) => {
+        await applyEdit({ type: 'editComparison', id: compareAction.id, topic, miles });
+        setCompareAction(null);
+        notify('Comparison updated.');
+      }} />
+    </Modal>}
     {reviewPost && <Modal title="Review and log an action" onClose={() => setReviewPost(null)}><ActionForm post={reviewPost} onSave={addAction} onClose={() => setReviewPost(null)} /></Modal>}
     {modal === 'plan' && <Modal title="Plan a change" onClose={() => setModal(null)}><PlanForm idea={planIdea} onSave={async step => {
       await applyEdit({ type: 'addStep', step });

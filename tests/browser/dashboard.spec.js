@@ -179,3 +179,37 @@ test('photo journals and completed alternatives stay private and count in the re
   await expect(page.getByText('1 change tried')).toBeVisible();
   expect(outbound).toEqual([]);
 });
+
+test('climate comparisons use private journal distances and published benchmarks', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-19T12:00:00'));
+  await page.goto('http://127.0.0.1:5173');
+  const comparison = page.locator('.climate-comparison');
+  await expect(comparison.getByText('Fictional trips with a distance')).toBeVisible();
+  await comparison.getByRole('button', { name: 'Plant-based meals' }).click();
+  await expect(comparison.getByText('25.1%', { exact: true })).toBeVisible();
+  await expect(comparison.getByRole('link', { name: /Nature Food/ })).toHaveAttribute('href', /PMC10365988/);
+
+  await page.getByRole('button', { name: 'Start my journal' }).click();
+  await expect(comparison).toHaveCount(0);
+  for (const [kind, distance] of [['bike', '2'], ['walk', '3']]) {
+    await page.getByRole('button', { name: 'Log an action' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox').selectOption(kind);
+    await dialog.getByLabel(/One-way distance/).fill(distance);
+    await dialog.getByLabel('When?').fill('2026-11-18');
+    await dialog.getByRole('button', { name: 'Save action' }).click();
+  }
+  await expect(comparison.getByText('50%', { exact: true })).toBeVisible();
+  await expect(comparison.getByText('52%', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit climate comparison for Walked instead' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit climate comparison' });
+  await edit.getByLabel(/One-way distance/).fill('1');
+  await edit.getByRole('button', { name: 'Save comparison' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Start my journal' }).click();
+  await page.getByRole('button', { name: 'Climate Wrapped', exact: true }).click();
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect(comparison.getByText('100%', { exact: true })).toBeVisible();
+  await expect(comparison.getByText('2 of 2 logged trips with a distance were under 3 miles.')).toBeVisible();
+});

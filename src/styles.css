@@ -359,3 +359,19 @@ main { padding-bottom: 42px; }
   .community-search input { flex-basis: 100%; }
   .journal-view-tabs { flex-wrap: wrap; }
 }
+
+.climate-comparison { margin: 17px 0; }
+.fact-options { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 13px; }
+.fact-options [aria-pressed="true"] { background: #d9efbd; color: #285739; }
+.fact-count { margin: 0 0 13px; color: #4f6452; }
+.fact-count strong { color: #263f30; }
+.climate-comparison h3 { font-size: 1rem; line-height: 1.4; }
+.fact-bars { list-style: none; margin: 12px 0; padding: 0; max-width: 580px; }
+.fact-bars li + li { margin-top: 8px; }
+.fact-bars li > div:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.fact-track { height: 8px; margin-top: 4px; border-radius: 5px; overflow: hidden; background: #e8ede3; }
+.fact-track span { display: block; height: 100%; border-radius: inherit; background: #839772; }
+.fact-track .personal-bar { background: #368354; }
+.fact-note { color: #505f50; margin: 4px 0; font-size: .9rem; }
+.fact-source { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; text-decoration: underline; text-underline-offset: 2px; }
+.activity-compare { flex-shrink: 0; }
