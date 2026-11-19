@@ -403,7 +403,7 @@ function mount() {
     }
   }).catch(() => {});
   message({ type: 'COMMUNITY_PROFILE', username }).then(shared => {
-    if (scanContext !== context || busy || !shared.profile) return;
+    if (scanContext !== context || busy || !shared.profile?.posts?.length) return;
     sharedProfile = shared.profile;
     if (!result) {
       collapsed = true;

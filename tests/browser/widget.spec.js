@@ -30,7 +30,7 @@ test('profile widget collects exactly 10 posts, compresses images, and renders e
   await expect(widget.getByRole('button',{name:'Scan up to 10 posts'})).toBeVisible();
   await widget.getByRole('button',{name:'Scan up to 10 posts'}).click();
   await expect(widget.getByText('10/10 posts read', {exact:false})).toBeVisible();
-  await expect(widget.getByText('Try taking bulky waste to a collection site.')).toBeVisible();
+  await expect(widget.locator('.nudge')).toContainText('Try taking bulky waste to a collection site.');
   await widget.getByRole('button', { name: /Plan a change privately/ }).click();
   expect(await page.evaluate(() => journalView)).toBe('plans');
   expect(await page.evaluate(()=>requests.filter(r=>r==='COLLECT_POST').length)).toBe(10);
